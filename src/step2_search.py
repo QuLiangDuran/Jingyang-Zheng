@@ -7,7 +7,7 @@ OUTPUT_FILE = "data/screened_papers.csv"
 
 def screen_papers():
     if not os.path.exists(INPUT_FILE):
-        print(f"File not found: {INPUT_FILE}. Please run step2 first.")
+        print(f"File not found: {INPUT_FILE}.")
         return
 
     print("Reading raw data...")
@@ -20,56 +20,60 @@ def screen_papers():
     initial_count = len(df)
     print(f"Initial total papers: {initial_count}")
 
+    # Data cleaning
     df['title'] = df['title'].fillna('').astype(str)
     df['abstractText'] = df['abstractText'].fillna('').astype(str)
-    
-    
     df['full_text'] = (df['title'] + ' ' + df['abstractText']).str.lower()
 
-    # ---------------- Rule 1: Deduplicate by ID ----------------
+    # Deduplicate based on ID
     df = df.drop_duplicates(subset=['id'])
-    print(f"Remaining after deduplication: {len(df)} papers")
+    print(f"After deduplication: {len(df)}")
 
-    # ---------------- Rule 2: Exclude reviews ----------------
-    
-    exclude_review_terms = r'(review|editorial|perspective|meta-analysis|commentary)'
+    # Exclude reviews
+    exclude_review_terms = r'(?:review|editorial|perspective|meta-analysis|commentary)'
     df = df[~df['full_text'].str.contains(exclude_review_terms, regex=True, na=False)]
-    print(f"Remaining after excluding reviews: {len(df)} papers")
+    print(f"After excluding reviews: {len(df)}")
 
-    # ---------------- Rule 3: Must contain microalgae ----------------
+
+    # Must contain conditions (Hard requirement)
+    condition_terms = r'(?:stress|stresses|limitation|limited|starvation|starved|deprivation|deprived|deficien|deficiency|deficient|salinity|salt|saline|heat|temperature|cold|light intensity|light stress|darkness|nutrient|nitrogen|phosphorus|phosphate|carbon|co2|ph\s|acidity|alkaline|oxidative|reactive oxygen|ros\b|morphology|morphological|growth|biomass|productivity|cultivation|incubation|medium|treatment|condition|applied|chamber|reactor)'
+    df = df[df['full_text'].str.contains(condition_terms, regex=True, na=False)]
+    print(f"After ensuring condition inclusion: {len(df)}")
+
+    # Flagging strain codes
+    print("Flagging strain codes and conditions...")
     
-    include_algae_terms = r'(microalga|microalgae|chlorella|spirulina|scenedesmus|chlamydomonas|cyanobacteria|algae)'
-    df_after_algae = df[df['full_text'].str.contains(include_algae_terms, regex=True, na=False)]
-    print(f"Remaining after ensuring microalgae inclusion: {len(df_after_algae)} papers")
-
+    strain_pattern = r'\b(?:[A-Za-z]{2,6}\s*\d{1,5}|sp\.\s*[A-Za-z0-9-]+|strain\s*[A-Za-z0-9-]+)\b'
     
-    print("\n--- Preview: Sample abstract (if any) after Rule 3 ---")
-    if not df_after_algae.empty:
-        print(df_after_algae.iloc[0]['abstractText'][:300] + "...")
-    print("-" * 40)
-
-    # ---------------- Rule 4: Must contain electrical ----------------
+    df['strain_code_found'] = df['full_text'].apply(
+        lambda x: ', '.join(set(re.findall(strain_pattern, x, re.IGNORECASE)))
+    )
     
-    include_electrical_terms = r'(voltage|current|power|electricity|electric|bpv|electrode|bioelectric|electron transfer|anode|cathode|volt|watt|ohm|amper|energy)'
-    df_final = df_after_algae[df_after_algae['full_text'].str.contains(include_electrical_terms, regex=True, na=False)]
-    print(f"Remaining after ensuring electrical data inclusion: {len(df_final)} papers")
+    df['has_strain_code'] = df['strain_code_found'].apply(lambda x: 'Yes' if x.strip() else 'No (Needs manual check)')
 
-    
-    print("\n--- Preview: Titles of final remaining papers ---")
-    for title in df_final['title'].head(5):
-        print(f"- {title}")
+    conditions_to_extract = ['nitrogen', 'stress', 'salinity', 'temperature', 'light', 'medium', 'carbon', 'phosphate']
+    df['conditions_mentioned'] = df['full_text'].apply(
+        lambda x: ', '.join([c for c in conditions_to_extract if c in x])
+    )
 
-    
-    df_final = df_final.drop(columns=['full_text'])
+    # Accessbility status
+    if 'isOpenAccess' in df.columns:
+        df['access_status'] = df['isOpenAccess'].apply(lambda x: 'Accessible' if str(x).upper() == 'Y' else 'Inaccessible')
+    else:
+        df['access_status'] = 'Unknown (Check during download)'
 
-    # ---------------- Save results ----------------
+    columns_to_keep = ['id', 'source', 'title', 'pubYear', 'doi', 'has_strain_code', 'strain_code_found', 'conditions_mentioned', 'access_status']
+    df_final = df[columns_to_keep].copy()
+
+    # Save results
     os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
     df_final.to_csv(OUTPUT_FILE, index=False, encoding='utf-8-sig')
     
     print("-" * 30)
-    print(f"Screening complete! Reduced from {initial_count} to {len(df_final)} papers.")
-    print(f"Results saved to: {OUTPUT_FILE}")
-    print("-" * 30)
+    print(f"Screening complete! Saved to: {OUTPUT_FILE}")
+    print(f"Total highly relevant papers kept: {len(df_final)}")
+    explicit_strain_count = len(df_final[df_final['has_strain_code'] == 'Yes'])
+    print(f"Out of these, {explicit_strain_count} papers contain an explicit strain code.")
 
 if __name__ == "__main__":
     screen_papers()
