@@ -3,7 +3,7 @@ import json
 
 from audit.extract import add_document, extract_document
 from audit.llm import ReplayClient
-from audit.recall import coverage, result_region, result_sentences
+from audit.recall import coverage, result_region, result_sentences, skipped_sentences
 
 TEXT = """Title. Introduction. Earlier work reached 100 mW/m2 [3].
 
@@ -72,3 +72,30 @@ def test_uncovered_results_are_flagged_on_the_paper(conn):
     msgs = [f["message"] for f in flags if f["code"] == "uncovered_result"]
     assert len(msgs) == 3 and any("Fewer than 1%" in m for m in msgs)
     assert not any("∼100 nA/cm2" in m for m in msgs)
+
+
+SKIPS = """■RESULTS AND DISCUSSION
+
+The applied potential was set at +0.23 V vs the mediator. Pht gave 0.4 µA/cm2 at 54 mW·cm−2.
+
+Figure 2. (a) Photocurrent of Pht. (b) Images at 20× (λex = 568 nm). Scale bar corresponds to 20 μm.
+
+Figure 3d shows the photocurrent rose to 0.10 µA/cm2.
+
+Fig. 6 Load voltage of arrayed cells at 1 kΩ. a Schematic.
+
+Load voltage (VL) at 1 kΩ
+
+Then, the electrode was dried and stored at RT for 3 days. Tw kept 98 ± 5% after being stored for 3 days.
+
+■CONCLUSION done.
+"""
+
+
+def test_captions_settings_and_headings_are_left_out_of_the_denominator():
+    kept = _sents(SKIPS)
+    assert kept == ["Pht gave 0.4 µA/cm2 at 54 mW·cm−2.",
+                    "Figure 3d shows the photocurrent rose to 0.10 µA/cm2.",   # body text that cites a figure
+                    "Tw kept 98 ± 5% after being stored for 3 days."]          # a result value wins over the cue
+    reasons = sorted(r for _, _, r in skipped_sentences(SKIPS))
+    assert reasons == ["caption"] * 3 + ["heading"] + ["setting"] * 2   # Figure 2: two value sentences; Fig. 6: one

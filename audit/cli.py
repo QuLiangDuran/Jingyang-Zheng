@@ -123,7 +123,8 @@ def main(argv: list[str] | None = None) -> None:
             print(f"Document {doc_id}: {_flag_counts(conn, doc_id)} after")
     elif args.cmd == "recall":
         from .fields import RecordContent
-        from .recall import coverage, observation_quotes
+        from collections import Counter
+        from .recall import coverage, observation_quotes, skipped_sentences
         for doc_id in args.document_id:
             row = conn.execute("SELECT title, text FROM documents WHERE id=?", (doc_id,)).fetchone()
             if row is None:
@@ -134,8 +135,11 @@ def main(argv: list[str] | None = None) -> None:
                 (doc_id,))]
             total, unc = coverage(row["text"], observation_quotes(obs))
             pct = 100 * (total - len(unc)) / total if total else 100
+            skipped = Counter(r for _, _, r in skipped_sentences(row["text"]))
             print(f"Document {doc_id} {row['title']}: {total} result sentence(s), {total - len(unc)} covered "
                   f"({pct:.0f}%), {len(unc)} uncovered; {len(obs)} observation(s)")
+            print("  left out: " + (", ".join(f"{n} {r}" for r, n in sorted(skipped.items())) or "none")
+                  + " (captions, headings/axis labels, setting-only sentences)")
             for a, b in (unc if args.all else unc[:30]):
                 print("  -", " ".join(row["text"][a:b].split())[:200])
             if not args.all and len(unc) > 30:
