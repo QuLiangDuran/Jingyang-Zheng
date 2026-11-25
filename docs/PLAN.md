@@ -35,6 +35,6 @@
 ## 下一步（需要你决定）
 
 1. **合并 `docs/extraction_rules_prompt.txt` 的规则**：文件放进 `docs/` 后，列出与现有规则 1–5 重复或冲突的条目给你确认，再合并进 `build_system_prompt`；`PROMPT_VERSION` 再加一。
-2. 拿到 Carly 的答复后（见 [FIELDS.md](FIELDS.md) 末尾的待确认问题），替换 `TEMP_CHOICES`、电学判定清单，`SCHEMA_VERSION` 加一。
+2. 拿到 Carly 的答复后（见本地 `docs/FIELDS.md` 末尾的待确认问题，暂时不公开），替换 `TEMP_CHOICES`、电学判定清单，`SCHEMA_VERSION` 加一。
 3. 用真实 API key 跑一篇论文，看提取质量。
 4. 之后再排：PDF 解析、初筛、读图、MCP。

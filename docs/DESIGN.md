@@ -60,7 +60,7 @@ audit/
 | `condition` | 一个生物在一个处理、一个阶段下的条件 | Identity、Cultivation、Electrical setup、Availability 组 |
 | `observation` | 一条测量结果 | Shared measurement fields 组 + `source_locator` / `evidence_excerpt` / `extraction_method` |
 
-记录内容仍是 `{"fields": {字段名: {"value", "quote"}}}`。字段定义见 [FIELDS.md](FIELDS.md)，代码里在 [audit/fields.py](../audit/fields.py)，每个字段带 `level / type / essential / missing / filled_by / choices`。
+记录内容仍是 `{"fields": {字段名: {"value", "quote"}}}`。字段清单见本地 `docs/FIELDS.md`（暂时不公开），代码里在 [audit/fields.py](../audit/fields.py)，每个字段带 `level / type / essential / missing / filled_by / choices`。
 
 `filled_by` 决定谁来填：
 

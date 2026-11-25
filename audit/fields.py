@@ -2,7 +2,8 @@
 
 The prompt, the parser, the checker, the review page and the export all read
 from here. Generated from docs/FIELDS.md (Dictionary + Extraction Template of
-docs/Microalgae_Data.xlsx); spellings follow FIELDS.md.
+docs/Microalgae_Data.xlsx); spellings follow FIELDS.md. Both files are kept local
+(not published in git for now).
 
 Data has three levels, each stored as its own reviewable record:
     source (paper)  ->  condition (organism + cultivation + electrical setup)  ->  observation

@@ -2,7 +2,7 @@
 
 AI 从论文文字中提取 MicroalgaeMatch 数据（论文 → 条件 → 观测值三层）→ 自动检查打 flag → 审核人在网页上看原文高亮、确认 / 修改 / 拒绝 → 导出与 Extraction Template 列顺序一致、带出处的 Excel。
 
-设计见 [docs/DESIGN.md](docs/DESIGN.md)，计划见 [docs/PLAN.md](docs/PLAN.md)，字段清单和待确认问题见 [docs/FIELDS.md](docs/FIELDS.md)。
+设计见 [docs/DESIGN.md](docs/DESIGN.md)，计划见 [docs/PLAN.md](docs/PLAN.md)。字段清单和待确认问题见本地 `docs/FIELDS.md`（暂时不公开，不在仓库里）。
 
 ## 安装
 
