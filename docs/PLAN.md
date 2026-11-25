@@ -29,10 +29,12 @@
 | 20 | 导出：模板列顺序 + 论文级字段 + 引文列；三层都确认才导出；sources 工作表 | `audit/export.py` | 完成 |
 | 21 | 网页：层级筛选、分组折叠、上下级跳转、下拉选项、待解决按钮 | `audit/static/` | 完成 |
 | 22 | 虚构微藻示例 + 测试（40 个） | `samples/`、`tests/` | 完成 |
+| 23 | 高亮吞字修复；duplicate_observation、missing_vs_sibling、value_numeric_mismatch | `static/`、`checks.py`、`review_service.py` | 完成 |
+| 24 | 整篇一次提取（超长才分块，后续块复用 condition_key）；截断标 parse_error；规则 3 改为省略；JSON 示例精简；trait/metric 临时列表；`PROMPT_VERSION = v3` | `extract.py`、`llm.py`、`config.py`、`fields.py` | 完成 |
 
 ## 下一步（需要你决定）
 
-1. **改提示词**（单独一步）：用 `docs/extraction_rules_prompt.txt` 重写 `extract.py` 的规则文字，`PROMPT_VERSION` 再加一。建议同时改成**整篇论文一次提取**：条件写在 Methods、结果写在 Results，分段调用时 AI 很难把两者对上；现在的提示词约 2.6 万字符，每段都要重复发送。
+1. **合并 `docs/extraction_rules_prompt.txt` 的规则**：文件放进 `docs/` 后，列出与现有规则 1–5 重复或冲突的条目给你确认，再合并进 `build_system_prompt`；`PROMPT_VERSION` 再加一。
 2. 拿到 Carly 的答复后（见 [FIELDS.md](FIELDS.md) 末尾的待确认问题），替换 `TEMP_CHOICES`、电学判定清单，`SCHEMA_VERSION` 加一。
 3. 用真实 API key 跑一篇论文，看提取质量。
 4. 之后再排：PDF 解析、初筛、读图、MCP。

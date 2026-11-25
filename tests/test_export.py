@@ -2,6 +2,7 @@ import csv
 import io
 from pathlib import Path
 
+import pytest
 from openpyxl import load_workbook
 
 from audit import review_service as svc
@@ -16,6 +17,7 @@ def _template_header() -> list[str]:
     return [v for v in list(ws.iter_rows(values_only=True))[1] if v]  # skips the unnamed "Morphology" column
 
 
+@pytest.mark.skipif(not TEMPLATE.exists(), reason="docs/Microalgae_Data.xlsx is kept local (not in git)")
 def test_export_columns_follow_extraction_template():
     expected = ["statistic_type" if h == "statistice_type" else h for h in _template_header()]
     expected.insert(expected.index("metric_code") + 1, "record_role")

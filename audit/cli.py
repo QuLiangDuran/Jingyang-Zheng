@@ -51,7 +51,7 @@ def main(argv: list[str] | None = None) -> None:
         print(f"Database ready: {s.db_path}")
     elif args.cmd == "ingest":
         path = Path(args.path)
-        doc_id = add_document(conn, args.title or path.stem, load_text(path), s.segment_max_chars, str(path))
+        doc_id = add_document(conn, args.title or path.stem, load_text(path), s.max_doc_chars, str(path))
         print(f"Imported document {doc_id}")
         if not args.no_extract:
             _report(extract_document(conn, doc_id, OpenAICompatClient.from_settings(s)))
@@ -60,7 +60,7 @@ def main(argv: list[str] | None = None) -> None:
     elif args.cmd == "demo":
         text = load_text(SAMPLES / "sample_paper.txt")
         responses = json.loads((SAMPLES / "sample_responses.json").read_text(encoding="utf-8"))
-        doc_id = add_document(conn, "示例论文（虚构微藻论文）", text, 600, "samples/sample_paper.txt")
+        doc_id = add_document(conn, "示例论文（虚构微藻论文）", text, s.max_doc_chars, "samples/sample_paper.txt")
         _report(extract_document(conn, doc_id, AnchoredReplayClient(responses)))
     elif args.cmd == "export":
         out = Path(args.out)

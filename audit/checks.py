@@ -3,7 +3,7 @@
 Cross-record flags (links between levels, duplicates) are added by
 review_service.refresh_document, which calls check_record for every record.
 """
-from .fields import RecordContent, ai_fields, choice_ok
+from .fields import RecordContent, ai_fields, choice_ok, suggested_ok
 from .textmatch import locate, normalize, numbers_in, numbers_in_value, parse_number
 
 
@@ -36,6 +36,9 @@ def check_record(kind: str, content: RecordContent, doc_text: str, electrical: b
         elif spec.type == "choice" and not choice_ok(spec, value):
             flags.append(flag("choice_not_allowed", "error",
                               f"{spec.name} 的值「{value}」不在临时选项里（可用 other / unspecified）", spec.name))
+        elif not suggested_ok(spec, value):
+            flags.append(flag("not_in_temp_list", "warning",
+                              f"{spec.name} 的值「{value}」不在临时列表里（待 Carly 确认列表）", spec.name))
 
         if spec.name == "evidence_excerpt" and locate(doc_text, value) is None:
             flags.append(flag("quote_not_found", "warning", "evidence_excerpt 在原文中找不到", spec.name))

@@ -14,7 +14,8 @@ class Settings:
     llm_api_key: str
     llm_temperature: float
     db_path: Path
-    segment_max_chars: int
+    max_doc_chars: int
+    llm_max_output_tokens: int | None
 
 
 def load_settings() -> Settings:
@@ -28,5 +29,8 @@ def load_settings() -> Settings:
         llm_api_key=os.getenv("LLM_API_KEY", ""),
         llm_temperature=float(os.getenv("LLM_TEMPERATURE", "0")),
         db_path=db_path,
-        segment_max_chars=int(os.getenv("SEGMENT_MAX_CHARS", "3000")),
+        # Whole paper in one call; only papers longer than this are split into chunks.
+        # (SEGMENT_MAX_CHARS from v1 is no longer used.)
+        max_doc_chars=int(os.getenv("MAX_DOC_CHARS", "200000")),
+        llm_max_output_tokens=int(os.getenv("LLM_MAX_OUTPUT_TOKENS", "16000")) or None,
     )

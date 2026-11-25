@@ -205,7 +205,7 @@ function renderDetail() {
         ${r.kind !== "source" && r.is_electrical ? '<span class="badge kind">⚡ 电学</span>' : ""}
         ${r.reviewer && r.status !== "pending" ? `<span class="muted">${esc(r.reviewer)} · ${esc(fmt(r.reviewed_at))}</span>` : ""}
       </div>
-      <div class="muted">文档：${esc(r.document_title)} · 第 ${r.segment.idx + 1} 段${r.experiment_id ? ` · 实验 ${esc(r.experiment_id)}` : ""}${r.arm_id ? ` · 组 ${esc(r.arm_id)}` : ""}</div>
+      <div class="muted">文档：${esc(r.document_title)}${r.segment.count > 1 ? ` · 第 ${r.segment.idx + 1}/${r.segment.count} 块` : ""}${r.experiment_id ? ` · 实验 ${esc(r.experiment_id)}` : ""}${r.arm_id ? ` · 组 ${esc(r.arm_id)}` : ""}</div>
       ${recordFlags.length ? `<ul class="flags">${recordFlags.map((x) => `<li class="${x.level}">${esc(x.message)}</li>`).join("")}</ul>` : ""}
       ${linksHtml(r.parents, "所属")}
       ${linksHtml(r.children, r.kind === "source" ? "条件" : "观测值")}

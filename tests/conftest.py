@@ -18,12 +18,17 @@ def conn():
     c.close()
 
 
-def load_demo(conn) -> int:
+def load_demo(conn, max_chars: int = 200_000, llm=None) -> int:
+    """Default: the whole demo paper in one call. A small max_chars forces the chunked path."""
     text = load_text(SAMPLES / "sample_paper.txt")
     entries = json.loads((SAMPLES / "sample_responses.json").read_text(encoding="utf-8"))
-    doc_id = add_document(conn, "demo", text, 600)
-    extract_document(conn, doc_id, AnchoredReplayClient(entries))
+    doc_id = add_document(conn, "demo", text, max_chars)
+    extract_document(conn, doc_id, llm or AnchoredReplayClient(entries))
     return doc_id
+
+
+def demo_client() -> AnchoredReplayClient:
+    return AnchoredReplayClient(json.loads((SAMPLES / "sample_responses.json").read_text(encoding="utf-8")))
 
 
 @pytest.fixture

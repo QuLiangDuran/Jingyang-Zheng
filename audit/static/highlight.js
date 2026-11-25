@@ -9,6 +9,9 @@ function escHtml(s) {
 // ranges: [{ s, e, i, label }] -- [s, e) char offsets of field i's quote.
 // seg: { start, end } of the record's segment (light background).
 function highlightHtml(text, ranges, seg) {
+  // The whole paper is usually one chunk; shading it all would carry no information.
+  const whole = text.slice(0, seg.start).trim() === "" && text.slice(seg.end).trim() === "";
+  if (whole) seg = { start: -1, end: -1 };
   const cuts = new Set([0, text.length, seg.start, seg.end]);
   ranges.forEach((r) => { cuts.add(r.s); cuts.add(r.e); });
   const pts = [...cuts].filter((p) => p >= 0 && p <= text.length).sort((a, b) => a - b);

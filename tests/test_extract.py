@@ -7,6 +7,7 @@ from audit import extract
 from audit.extract import ParseError, add_document, extract_document, parse_response
 from audit.fields import ai_fields
 from audit.llm import ReplayClient
+from tests.conftest import demo_client, load_demo
 
 TEXT = "Methods. Strain X was grown in BG-11 at 30 °C.\n\nResults. Biomass was 1.2 g/L."
 
@@ -21,15 +22,30 @@ def _flags(conn, rid):
 def test_prompt_example_is_generated_from_fields_and_version_bumped():
     ex = extract.response_example()
     assert set(ex) == {"source", "conditions", "observations"}
-    assert list(ex["source"]) == [f.name for f in ai_fields("source")]
-    assert list(ex["conditions"][0]) == [f.name for f in ai_fields("condition")]
-    assert list(ex["observations"][0]) == [f.name for f in ai_fields("observation")]
-    assert ex["observations"][0]["condition_ref"] == "..."                     # link labels are bare strings
-    assert ex["observations"][0]["record_role"] == {"value": "...", "quote": None}  # no quote needed
+    for key, level in (("source", "source"), ("conditions", "condition"), ("observations", "observation")):
+        item = ex[key] if key == "source" else ex[key][0]
+        names = [f.name for f in ai_fields(level)]
+        assert 3 <= len(item) <= 5 and set(item) <= set(names)              # short example, real field names
+        assert list(item) == [n for n in names if n in item]                # in field-list order
+    assert ex["conditions"][0]["condition_key"] == "..."                     # required links are shown,
+    assert ex["observations"][0]["condition_ref"] == "..."                   # as bare string labels
+    assert {"value": "...", "quote": None} in ex["observations"][0].values()  # a field without a quote
     prompt = extract.build_system_prompt()
     assert json.dumps(ex, ensure_ascii=False) in prompt
+    for f in ai_fields("condition") + ai_fields("observation") + ai_fields("source"):
+        assert f'- "{f.name}" (' in prompt                                   # every AI field is described
     assert "1. Extract only what the text states explicitly. Do not infer, compute or convert." in prompt
-    assert extract.PROMPT_VERSION == "v2"
+    assert "3. If a field is not stated, omit it." in prompt
+    assert "use one of: growth |" in prompt and "dry_biomass" in prompt        # temporary trait / metric lists
+    assert extract.PROMPT_VERSION == "v3"
+
+
+def test_prompt_leaves_out_fields_the_ai_does_not_fill():
+    prompt = extract.build_system_prompt()
+    for name in ("study_id", "condition_id", "observation_id", "review_status", "reviewer_id",
+                 "accepted_taxon_name", "availability_status", "supplier_url", "is_electrical"):
+        assert f'"{name}"' not in prompt
+    assert len(prompt) < 21_000  # v2 was 26,360 chars; guards against the example growing back
 
 
 # ---------- parse_response ----------
@@ -139,6 +155,76 @@ def test_llm_exception_recorded(conn):
     assert s.failed_runs == 1
     assert conn.execute("SELECT status FROM extraction_runs").fetchone()["status"] == "llm_error"
     assert conn.execute("SELECT COUNT(*) FROM records").fetchone()[0] == 0  # no placeholder without an answer
+
+
+# ---------- whole paper / chunks / truncation ----------
+
+def _parent(conn, rid):
+    return conn.execute("SELECT parent_id FROM records WHERE id=?", (rid,)).fetchone()[0]
+
+
+def test_whole_paper_is_one_call_and_methods_conditions_link_to_results(conn):
+    llm = demo_client()
+    load_demo(conn, llm=llm)
+    assert len(llm.calls) == 1 and conn.execute("SELECT COUNT(*) FROM segments").fetchone()[0] == 1
+    user = llm.calls[0][1]
+    assert "Methods. Chlorella" in user and "Results. After 96 h" in user and "part 1 of" not in user
+    text = conn.execute("SELECT text FROM documents").fetchone()[0]
+    c1 = json.loads(conn.execute("SELECT current_json FROM records WHERE id=2").fetchone()[0])["fields"]
+    assert c1["condition_key"]["value"] == "control_25C"
+    assert text.index(c1["medium_name"]["quote"]) < text.index("Results.")       # condition from Methods
+    for obs in (4, 6):                                                           # results from Results
+        o = json.loads(conn.execute("SELECT current_json FROM records WHERE id=?", (obs,)).fetchone()[0])
+        assert text.index(o["fields"]["analyte"]["quote"]) > text.index("Results.")
+        assert _parent(conn, obs) == 2                                           # ... same condition C1
+    assert _parent(conn, 5) == _parent(conn, 8) == 3 and _parent(conn, 2) == _parent(conn, 3) == 1
+
+
+def test_long_paper_is_chunked_and_later_chunks_reuse_condition_keys(conn):
+    llm = demo_client()
+    load_demo(conn, max_chars=600, llm=llm)  # 3 chunks: abstract / methods / results
+    assert len(llm.calls) == 3
+    first, second, third = (u for _, u in llm.calls)
+    assert "part 1 of 3" in first and "already extracted" not in first
+    assert 'return "source": null' in second
+    assert '"condition_key": "control_25C"' in third and '"condition_key": "heat_35C"' in third
+    assert [_parent(conn, i) for i in range(1, 9)] == [None, 1, 1, 2, 3, 2, None, 3]  # same links as whole paper
+
+
+def test_source_from_a_later_chunk_is_not_a_second_paper(conn):
+    doc = add_document(conn, "t", TEXT, 10)  # two chunks
+    src = {"doi": {"value": "10.1/x", "quote": None}}
+    s = extract_document(conn, doc, ReplayClient([json.dumps({"source": src}), json.dumps({"source": src})]))
+    assert s.failed_runs == 0
+    assert conn.execute("SELECT COUNT(*) FROM records WHERE kind='source'").fetchone()[0] == 1
+    run2 = conn.execute("SELECT error, raw_response FROM extraction_runs ORDER BY id DESC").fetchone()
+    assert "already taken from part 1" in run2["error"] and "10.1/x" in run2["raw_response"]
+
+
+def test_truncated_output_is_a_parse_error_and_not_continued(conn):
+    class Cut(ReplayClient):
+        def complete(self, s, u):
+            out = super().complete(s, u)
+            self.last_finish_reason = "length"
+            return out
+    doc = add_document(conn, "t", TEXT, 200_000)
+    raw = '{"source": {"doi": {"value": "10.1/x", "quote": null}}, "observations": [{"condition_ref": "c1"'
+    llm = Cut([raw])
+    s = extract_document(conn, doc, llm)
+    assert len(llm.calls) == 1 and (s.runs, s.records, s.failed_runs) == (1, 0, 1)
+    run = conn.execute("SELECT status, error, raw_response FROM extraction_runs").fetchone()
+    assert run["status"] == "parse_error" and "输出被截断" in run["error"] and run["raw_response"] == raw
+
+
+def test_trait_group_and_metric_outside_temporary_list_is_a_warning(conn, demo):
+    from audit import review_service as svc
+    r = svc.edit_field(conn, 4, "a", "metric_code", "x", value="biomass_weird")
+    [f] = [f for f in r["flags"] if f["code"] == "not_in_temp_list"]
+    assert (f["field"], f["level"]) == ("metric_code", "warning")
+    r = svc.edit_field(conn, 4, "a", "trait_group", "x", value="mystery")
+    assert {(f["field"], f["level"]) for f in r["flags"]} == {("metric_code", "warning"), ("trait_group", "warning")}
+    r = svc.edit_field(conn, 4, "a", "metric_code", "x", value="dry_biomass")
+    assert "metric_code" not in {f["field"] for f in r["flags"]}
 
 
 def test_demo_flags(conn, demo):

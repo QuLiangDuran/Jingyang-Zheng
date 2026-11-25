@@ -94,14 +94,36 @@ TEMP_CHOICES: dict[str, list[str]] = {  # TODO: confirm with Carly
     "exclusion_reason": ["no_original_data", "no_eligible_organism", "no_relevant_result", "cannot_link_result"],
 }
 
-# is_electrical is derived from these. TODO: confirm with Carly -- the "seven
-# scientific categories" of trait_group and the metric_code list are not given yet.
+# trait_group / metric_code are Text fields, but the AI is asked to use these values; anything
+# else gets a warning (not_in_temp_list). TODO: confirm with Carly -- the "seven scientific
+# categories" of trait_group and the controlled metric_code list are not given yet.
+TEMP_TRAIT_GROUPS = ["growth", "biomass_composition", "pigments", "photosynthesis", "morphology",
+                     "stress_tolerance", "bioelectrical"]
+# is_electrical is derived from these two sets.
 ELECTRICAL_TRAIT_GROUPS = {"bioelectrical", "electrical", "electrochemical"}
 ELECTRICAL_METRIC_CODES = {
     "power_density", "max_power_density", "current_density", "peak_current_density", "current",
     "open_circuit_voltage", "voltage", "power_output", "internal_resistance", "coulombic_efficiency",
     "polarization_curve", "photocurrent", "photocurrent_density",
 }
+TEMP_METRIC_CODES = [
+    # growth
+    "dry_biomass", "biomass_concentration", "biomass_productivity", "specific_growth_rate", "cell_density",
+    "optical_density", "doubling_time",
+    # biomass composition
+    "lipid_content", "protein_content", "carbohydrate_content", "starch_content",
+    # pigments
+    "chlorophyll_a", "chlorophyll_b", "total_chlorophyll", "carotenoids",
+    # photosynthesis
+    "fv_fm", "oxygen_evolution_rate", "photosynthetic_rate", "respiration_rate",
+    # morphology
+    "cell_size", "cell_shape",
+    # stress tolerance
+    "survival_rate", "cell_viability",
+    # bioelectrical
+    *sorted(ELECTRICAL_METRIC_CODES),
+]
+TEMP_SUGGESTED = {"trait_group": TEMP_TRAIT_GROUPS, "metric_code": TEMP_METRIC_CODES}
 # ===================================================================== end TEMPORARY
 
 # AI fields whose value must appear word-for-word in its quote.
@@ -127,6 +149,7 @@ class FieldSpec(BaseModel):
     filled_by: FilledBy = "ai"
     description: str
     choices: list[str] | None = None
+    suggested: list[str] | None = None  # Text field with a preferred list: outside it -> warning only
     verbatim: bool = False
     needs_quote: bool = True
     exported: bool = True          # appears as a main export column (template + paper-level)
@@ -144,6 +167,8 @@ class FieldSpec(BaseModel):
 def _f(name, group, level, type_, essential, missing, filled_by, description, **kw) -> FieldSpec:
     if type_ == "choice":
         kw.setdefault("choices", TEMP_CHOICES[name])
+    if name in TEMP_SUGGESTED:
+        kw.setdefault("suggested", TEMP_SUGGESTED[name])
     return FieldSpec(
         name=name, group=group, level=level, type=type_, essential=essential, missing=missing,
         filled_by=filled_by, description=description,
@@ -531,6 +556,12 @@ def _choice_key(s: str) -> str:
 def choice_ok(spec: FieldSpec, value: str) -> bool:
     allowed = (spec.choices or []) + list(ALWAYS_ALLOWED)
     return _choice_key(value) in {_choice_key(c) for c in allowed}
+
+
+def suggested_ok(spec: FieldSpec, value: str) -> bool:
+    if not spec.suggested:
+        return True
+    return _choice_key(value) in {_choice_key(c) for c in spec.suggested + list(ALWAYS_ALLOWED)}
 
 
 def is_electrical(trait_group: str | None, metric_code: str | None) -> bool:
