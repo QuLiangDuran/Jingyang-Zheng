@@ -1,0 +1,167 @@
+[
+  {
+    "_comment": "Canned AI answers for samples/sample_paper.txt (fictional). Each entry answers the segment that contains `anchor`; entries hitting the same segment are merged. Deliberate mistakes: heat condition has a habitat_class outside the temporary list and a paraphrased medium quote; heat biomass has value_numeric 0.79 (text says 0.97); heat power density points to a non-existent condition 'heat_30C'; the Discussion repeats the heat biomass observation.",
+    "anchor": "Abstract.",
+    "response": {
+      "source": {
+        "source_type": {"value": "main_article", "quote": null},
+        "doi": {"value": "10.0000/demo.2025.001", "quote": "doi:10.0000/demo.2025.001"},
+        "article_title": {"value": "Thermal tolerance and biophotovoltaic output of a fictional Chlorella strain (DEMO ONLY)", "quote": "Thermal tolerance and biophotovoltaic output of a fictional Chlorella strain (DEMO ONLY)"},
+        "source_url": {"value": "https://example.org/demo-paper", "quote": "https://example.org/demo-paper"},
+        "first_author": {"value": "Q. Example", "quote": "Q. Example, R. Placeholder"},
+        "publication_year": {"value": "2025", "quote": "Journal of Fictional Phycology, 2025"},
+        "paper_type": {"value": "original_research", "quote": null},
+        "paper_verdict": {"value": "include", "quote": null}
+      }
+    }
+  },
+  {
+    "anchor": "Methods.",
+    "response": {
+      "conditions": [
+        {
+          "condition_key": "control_25C", "experiment_ref": "heat_series", "arm_ref": "control",
+          "condition_source_locator": {"value": "Methods", "quote": null},
+          "organism_name_reported": {"value": "Chlorella vulgaris", "quote": "Chlorella vulgaris strain DEMO-17 (wild type, freshwater)"},
+          "strain_id": {"value": "DEMO-17", "quote": "Chlorella vulgaris strain DEMO-17"},
+          "identity_resolution": {"value": "strain", "quote": null},
+          "culture_collection": {"value": "Demo Culture Collection", "quote": "was obtained from the Demo Culture Collection"},
+          "genus": {"value": "Chlorella", "quote": "Chlorella vulgaris strain DEMO-17"},
+          "habitat_class": {"value": "freshwater", "quote": "(wild type, freshwater)"},
+          "genotype": {"value": "wild type", "quote": "(wild type, freshwater)"},
+          "genotype_status": {"value": "wild_type", "quote": "(wild type, freshwater)"},
+          "group_type": {"value": "control", "quote": "The control group was kept at 25 °C"},
+          "medium_name": {"value": "BG-11", "quote": "Cells were grown in BG-11 medium"},
+          "cultivation_system": {"value": "250 mL flasks", "quote": "in 250 mL flasks"},
+          "working_volume": {"value": "150", "quote": "a working volume of 150 mL"},
+          "working_volume_unit": {"value": "mL", "quote": "a working volume of 150 mL"},
+          "feed_mode": {"value": "batch", "quote": "as batch cultures"},
+          "light_intensity": {"value": "100", "quote": "Light was supplied at 100 µmol photons m-2 s-1"},
+          "light_unit": {"value": "µmol photons m-2 s-1", "quote": "Light was supplied at 100 µmol photons m-2 s-1"},
+          "light_measurement_basis": {"value": "photon_flux", "quote": "100 µmol photons m-2 s-1"},
+          "photoperiod": {"value": "16:8 h light:dark", "quote": "with a 16:8 h light:dark cycle"},
+          "light_hours": {"value": "16", "quote": "with a 16:8 h light:dark cycle"},
+          "dark_hours": {"value": "8", "quote": "with a 16:8 h light:dark cycle"},
+          "temperature": {"value": "25", "quote": "The control group was kept at 25 °C"},
+          "temperature_unit": {"value": "°C", "quote": "The control group was kept at 25 °C"},
+          "system_type": {"value": "single-chamber biophotovoltaic device", "quote": "in a single-chamber biophotovoltaic device without a membrane"},
+          "anode_material": {"value": "indium tin oxide", "quote": "loaded onto an indium tin oxide anode"},
+          "cathode_material": {"value": "platinum", "quote": "with a platinum cathode"},
+          "mediator": {"value": "none", "quote": "No mediator was added"},
+          "membrane_or_separator": {"value": "none", "quote": "without a membrane"},
+          "external_load_value": {"value": "10", "quote": "The external load was 10 kΩ"},
+          "external_load_unit": {"value": "kΩ", "quote": "The external load was 10 kΩ"}
+        },
+        {
+          "condition_key": "heat_35C", "experiment_ref": "heat_series", "arm_ref": "heat",
+          "condition_source_locator": {"value": "Methods", "quote": null},
+          "organism_name_reported": {"value": "Chlorella vulgaris", "quote": "Chlorella vulgaris strain DEMO-17 (wild type, freshwater)"},
+          "strain_id": {"value": "DEMO-17", "quote": "Chlorella vulgaris strain DEMO-17"},
+          "identity_resolution": {"value": "strain", "quote": null},
+          "genus": {"value": "Chlorella", "quote": "Chlorella vulgaris strain DEMO-17"},
+          "habitat_class": {"value": "lake water", "quote": "(wild type, freshwater)"},
+          "group_type": {"value": "heat", "quote": "the heat group was kept at 35 °C for 96 h"},
+          "medium_name": {"value": "BG-11", "quote": "grown in BG-11 culture medium"},
+          "cultivation_system": {"value": "250 mL flasks", "quote": "in 250 mL flasks"},
+          "feed_mode": {"value": "batch", "quote": "as batch cultures"},
+          "temperature": {"value": "35", "quote": "the heat group was kept at 35 °C for 96 h"},
+          "temperature_unit": {"value": "°C", "quote": "the heat group was kept at 35 °C for 96 h"},
+          "phase_duration": {"value": "96", "quote": "the heat group was kept at 35 °C for 96 h"},
+          "phase_duration_unit": {"value": "h", "quote": "the heat group was kept at 35 °C for 96 h"},
+          "system_type": {"value": "single-chamber biophotovoltaic device", "quote": "in a single-chamber biophotovoltaic device without a membrane"},
+          "anode_material": {"value": "indium tin oxide", "quote": "loaded onto an indium tin oxide anode"},
+          "cathode_material": {"value": "platinum", "quote": "with a platinum cathode"},
+          "mediator": {"value": "none", "quote": "No mediator was added"},
+          "membrane_or_separator": {"value": "none", "quote": "without a membrane"}
+        }
+      ]
+    }
+  },
+  {
+    "anchor": "Results.",
+    "response": {
+      "observations": [
+        {
+          "condition_ref": "control_25C", "observation_key": "biomass_control",
+          "source_locator": {"value": "Results", "quote": null},
+          "extraction_method": {"value": "text", "quote": null},
+          "trait_group": {"value": "growth", "quote": null},
+          "metric_code": {"value": "dry_biomass", "quote": null},
+          "record_role": {"value": "result", "quote": null},
+          "analyte": {"value": "dry biomass", "quote": "dry biomass was 1.42 ± 0.08 g/L in the control group"},
+          "value_original": {"value": "1.42 ± 0.08", "quote": "dry biomass was 1.42 ± 0.08 g/L in the control group"},
+          "unit_original": {"value": "g/L", "quote": "dry biomass was 1.42 ± 0.08 g/L in the control group"},
+          "value_numeric": {"value": "1.42", "quote": "dry biomass was 1.42 ± 0.08 g/L in the control group"},
+          "value_status": {"value": "scalar", "quote": null},
+          "uncertainty_value": {"value": "0.08", "quote": "1.42 ± 0.08 g/L"},
+          "uncertainty_type": {"value": "unspecified", "quote": "1.42 ± 0.08 g/L"},
+          "n_reported_unspecified": {"value": "3", "quote": "(n = 3)"},
+          "measurement_time_original": {"value": "After 96 h", "quote": "After 96 h"},
+          "time_value": {"value": "96", "quote": "After 96 h"},
+          "time_unit": {"value": "h", "quote": "After 96 h"},
+          "evidence_excerpt": {"value": "dry biomass was 1.42 ± 0.08 g/L", "quote": null}
+        },
+        {
+          "condition_ref": "heat_35C", "comparator_condition_ref": "control_25C",
+          "source_locator": {"value": "Results", "quote": null},
+          "extraction_method": {"value": "text", "quote": null},
+          "trait_group": {"value": "growth", "quote": null},
+          "metric_code": {"value": "dry_biomass", "quote": null},
+          "record_role": {"value": "result", "quote": null},
+          "analyte": {"value": "dry biomass", "quote": "0.97 ± 0.05 g/L in the heat group"},
+          "value_original": {"value": "0.97 ± 0.05", "quote": "0.97 ± 0.05 g/L in the heat group"},
+          "unit_original": {"value": "g/L", "quote": "0.97 ± 0.05 g/L in the heat group"},
+          "value_numeric": {"value": "0.79", "quote": "0.97 ± 0.05 g/L in the heat group"},
+          "value_status": {"value": "scalar", "quote": null}
+        },
+        {
+          "condition_ref": "control_25C",
+          "source_locator": {"value": "Results", "quote": null},
+          "extraction_method": {"value": "text", "quote": null},
+          "trait_group": {"value": "bioelectrical", "quote": null},
+          "metric_code": {"value": "max_power_density", "quote": null},
+          "record_role": {"value": "result", "quote": null},
+          "analyte": {"value": "power density", "quote": "The maximum power density was 2.1 mW m-2 for the control biofilm"},
+          "value_original": {"value": "2.1", "quote": "The maximum power density was 2.1 mW m-2 for the control biofilm"},
+          "unit_original": {"value": "mW m-2", "quote": "The maximum power density was 2.1 mW m-2 for the control biofilm"},
+          "value_numeric": {"value": "2.1", "quote": "The maximum power density was 2.1 mW m-2 for the control biofilm"},
+          "value_status": {"value": "scalar", "quote": null},
+          "statistic_type": {"value": "maximum", "quote": "The maximum power density was 2.1 mW m-2"}
+        },
+        {
+          "condition_ref": "heat_30C",
+          "source_locator": {"value": "Results", "quote": null},
+          "extraction_method": {"value": "text", "quote": null},
+          "trait_group": {"value": "bioelectrical", "quote": null},
+          "metric_code": {"value": "max_power_density", "quote": null},
+          "record_role": {"value": "result", "quote": null},
+          "analyte": {"value": "power density", "quote": "1.3 mW m-2 for the heat biofilm"},
+          "value_original": {"value": "1.3", "quote": "1.3 mW m-2 for the heat biofilm"},
+          "unit_original": {"value": "mW m-2", "quote": "1.3 mW m-2 for the heat biofilm"},
+          "value_numeric": {"value": "1.3", "quote": "1.3 mW m-2 for the heat biofilm"},
+          "value_status": {"value": "scalar", "quote": null}
+        }
+      ]
+    }
+  },
+  {
+    "anchor": "Discussion.",
+    "response": {
+      "observations": [
+        {
+          "condition_ref": "heat_35C", "comparator_condition_ref": "control_25C",
+          "source_locator": {"value": "Results", "quote": null},
+          "extraction_method": {"value": "text", "quote": null},
+          "trait_group": {"value": "growth", "quote": null},
+          "metric_code": {"value": "dry_biomass", "quote": null},
+          "record_role": {"value": "result", "quote": null},
+          "analyte": {"value": "dry biomass", "quote": "0.97 ± 0.05 g/L in the heat group"},
+          "value_original": {"value": "0.97 ± 0.05", "quote": "0.97 ± 0.05 g/L in the heat group"},
+          "unit_original": {"value": "g/L", "quote": "0.97 ± 0.05 g/L in the heat group"},
+          "value_numeric": {"value": "0.79", "quote": "0.97 ± 0.05 g/L in the heat group"},
+          "value_status": {"value": "scalar", "quote": null}
+        }
+      ]
+    }
+  }
+]

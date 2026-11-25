@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>数据审核</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>数据审核</h1>
+  <label class="reviewer">审核人
+    <input id="reviewer" placeholder="填写你的名字" autocomplete="name">
+  </label>
+  <span class="spacer"></span>
+  <a class="btn" href="/api/export.xlsx">导出 Excel</a>
+  <a class="btn" href="/api/export.csv">导出 CSV</a>
+</header>
+
+<main>
+  <aside id="sidebar">
+    <div class="filters">
+      <select id="f-doc"><option value="">全部文档</option></select>
+      <select id="f-kind">
+        <option value="">全部层级</option>
+        <option value="source">论文</option>
+        <option value="condition">条件</option>
+        <option value="observation">观测值</option>
+      </select>
+      <select id="f-status">
+        <option value="pending">待审核</option>
+        <option value="needs_resolution">待解决</option>
+        <option value="approved">已确认</option>
+        <option value="rejected">已拒绝</option>
+        <option value="">全部状态</option>
+      </select>
+      <select id="f-flag">
+        <option value="">全部</option>
+        <option value="true">有 flag</option>
+        <option value="false">无 flag</option>
+      </select>
+    </div>
+    <div id="counts" class="muted"></div>
+    <ul id="list"></ul>
+  </aside>
+
+  <section id="source">
+    <div class="pane-title">原文 <span id="doc-title" class="muted"></span></div>
+    <div id="source-text" class="muted">← 选择一条记录</div>
+  </section>
+
+  <section id="detail">
+    <div class="pane-title">记录</div>
+    <div id="detail-body" class="muted">未选择</div>
+  </section>
+</main>
+
+<div id="toast" hidden></div>
+<script src="highlight.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

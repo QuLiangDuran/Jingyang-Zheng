@@ -1,0 +1,105 @@
+:root {
+  --bg: #f6f7f9; --panel: #fff; --border: #dde1e6; --text: #1f2328; --muted: #6a737d;
+  --accent: #2463eb; --ok: #1a7f37; --bad: #cf222e; --warn: #9a6700;
+  --h0: #ffe58f; --h1: #b7eb8f; --h2: #91caff; --h3: #ffadd2; --h4: #d3adf7;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.5 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+       color: var(--text); background: var(--bg); height: 100vh; display: flex; flex-direction: column; }
+header { display: flex; align-items: center; gap: 16px; padding: 8px 16px; background: var(--panel);
+         border-bottom: 1px solid var(--border); }
+header h1 { font-size: 16px; margin: 0; }
+.spacer { flex: 1; }
+.reviewer input { margin-left: 6px; }
+input, select, textarea, button { font: inherit; }
+input, select, textarea { border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; background: #fff; }
+textarea { width: 100%; resize: vertical; }
+.btn, button { display: inline-block; border: 1px solid var(--border); background: #fff; border-radius: 6px;
+               padding: 4px 12px; cursor: pointer; color: var(--text); text-decoration: none; }
+.btn:hover, button:hover { background: #f0f2f5; }
+button.primary { background: var(--ok); border-color: var(--ok); color: #fff; }
+button.danger { color: var(--bad); border-color: var(--bad); }
+button:disabled { opacity: .5; cursor: default; }
+.muted { color: var(--muted); }
+
+main { flex: 1; display: grid; grid-template-columns: 280px 1fr 460px; min-height: 0; }
+main > * { overflow: auto; min-height: 0; }
+#sidebar { background: var(--panel); border-right: 1px solid var(--border); padding: 8px; }
+.filters { display: flex; flex-direction: column; gap: 6px; margin-bottom: 6px; }
+#counts { font-size: 12px; margin-bottom: 6px; }
+#list { list-style: none; margin: 0; padding: 0; }
+#list li { padding: 6px 8px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; }
+#list li:hover { background: #f0f2f5; }
+#list li.active { border-color: var(--accent); background: #eef3fe; }
+#list .line1 { display: flex; gap: 6px; align-items: center; }
+#list .line2 { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.pane-title { position: sticky; top: 0; background: inherit; padding: 8px 16px; font-weight: 600;
+              border-bottom: 1px solid var(--border); z-index: 1; }
+#source { background: var(--panel); border-right: 1px solid var(--border); }
+#source-text { padding: 16px 24px; white-space: pre-wrap; font-size: 15px; line-height: 1.8; max-width: 860px; }
+#detail { background: var(--bg); }
+#detail .pane-title { background: var(--bg); }
+#detail-body { padding: 12px 16px; }
+
+/* Highlights must never paint over neighbouring characters: no box-shadow / outline / padding /
+   border on .seg or mark (an 8px box-shadow on .seg used to hide the last letter of each quote).
+   tests/test_highlight.py checks this. */
+.seg { background: #f3f6fa; }
+mark { background: #fff6cc; color: inherit; cursor: pointer; }
+mark.multi { background: #ffefa8; }
+mark.active { background: #ffc53d; }
+.field.active { background: #fff8e1; }
+
+.badge { font-size: 11px; padding: 0 6px; border-radius: 10px; border: 1px solid; white-space: nowrap; }
+.badge.pending { color: var(--muted); } .badge.approved { color: var(--ok); } .badge.rejected { color: var(--bad); }
+.badge.error { color: var(--bad); } .badge.warning { color: var(--warn); } .badge.edited { color: var(--accent); }
+
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; }
+.card h3 { margin: 0 0 6px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.status-line { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.flags { margin: 0; padding-left: 18px; }
+.flags li.error { color: var(--bad); } .flags li.warning { color: var(--warn); }
+
+.field { border-top: 1px solid var(--border); padding: 8px 0; }
+.field:first-of-type { border-top: 0; }
+.field .head { display: flex; align-items: center; gap: 6px; }
+.field .label { font-weight: 600; }
+.field .value { font-size: 15px; margin: 2px 0; word-break: break-word; }
+.field .value.empty { color: var(--muted); font-style: italic; }
+.field .quote { font-size: 12px; color: var(--muted); cursor: pointer; }
+.field .quote.notfound { color: var(--bad); }
+.field .was { font-size: 12px; color: var(--accent); }
+.field .head button { margin-left: auto; padding: 0 8px; font-size: 12px; }
+.editor { display: grid; gap: 6px; margin-top: 6px; background: #f8f9fb; border-radius: 6px; padding: 8px; }
+.editor label { font-size: 12px; color: var(--muted); }
+.editor .row { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.actions { display: grid; gap: 8px; }
+.actions .row { display: flex; gap: 8px; }
+.actions input { flex: 1; }
+
+.log { list-style: none; margin: 0; padding: 0; font-size: 12px; }
+.log li { padding: 4px 0; border-top: 1px dashed var(--border); }
+.log li:first-child { border-top: 0; }
+details pre { white-space: pre-wrap; word-break: break-all; font-size: 12px; background: #f8f9fb; padding: 8px; border-radius: 6px; max-height: 300px; overflow: auto; }
+
+#toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #1f2328; color: #fff;
+         padding: 8px 16px; border-radius: 6px; z-index: 10; }
+#toast.err { background: var(--bad); }
+
+/* three-level records */
+.badge.needs_resolution { color: var(--warn); }
+.badge.kind { color: var(--text); background: #f0f2f5; border-color: #f0f2f5; }
+.badge.kind.source { background: #e8f0fe; border-color: #e8f0fe; }
+.badge.kind.condition { background: #e6f4ea; border-color: #e6f4ea; }
+.badge.kind.observation { background: #fef7e0; border-color: #fef7e0; }
+.links { margin: 6px 0 0; padding: 0; list-style: none; font-size: 12px; }
+.links li { cursor: pointer; padding: 2px 0; }
+.links li:hover { text-decoration: underline; }
+details.group { border-top: 1px solid var(--border); padding: 4px 0; }
+details.group:first-of-type { border-top: 0; }
+details.group > summary { cursor: pointer; font-weight: 600; font-size: 13px; padding: 4px 0; }
+details.group > summary .muted { font-weight: normal; }
+.field .label { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+.toolbar { display: flex; gap: 8px; align-items: center; font-size: 12px; margin-bottom: 6px; }

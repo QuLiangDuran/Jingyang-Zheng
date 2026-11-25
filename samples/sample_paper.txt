@@ -1,0 +1,13 @@
+Thermal tolerance and biophotovoltaic output of a fictional Chlorella strain (DEMO ONLY)
+
+Q. Example, R. Placeholder. Journal of Fictional Phycology, 2025. doi:10.0000/demo.2025.001. https://example.org/demo-paper
+
+Abstract. This fictional study tests whether moderate heat changes the growth and power output of Chlorella vulgaris strain DEMO-17. Cultures grown at 35 °C reached a lower dry biomass than cultures grown at 25 °C, and biofilms from the 25 °C cultures produced a higher power density in a biophotovoltaic device.
+
+Methods. Chlorella vulgaris strain DEMO-17 (wild type, freshwater) was obtained from the Demo Culture Collection. Cells were grown in BG-11 medium in 250 mL flasks with a working volume of 150 mL as batch cultures. Light was supplied at 100 µmol photons m-2 s-1 with a 16:8 h light:dark cycle. The control group was kept at 25 °C and the heat group was kept at 35 °C for 96 h.
+
+For electrical tests, cells from each group were loaded onto an indium tin oxide anode with a platinum cathode in a single-chamber biophotovoltaic device without a membrane. No mediator was added. The external load was 10 kΩ.
+
+Results. After 96 h, dry biomass was 1.42 ± 0.08 g/L in the control group and 0.97 ± 0.05 g/L in the heat group (n = 3). The maximum power density was 2.1 mW m-2 for the control biofilm and 1.3 mW m-2 for the heat biofilm.
+
+Discussion. Heat at 35 °C reduced dry biomass to 0.97 g/L, which agrees with the lower power density.

@@ -1,0 +1,164 @@
+import json
+import sqlite3
+
+import pytest
+
+from audit import extract
+from audit.extract import ParseError, add_document, extract_document, parse_response
+from audit.fields import ai_fields
+from audit.llm import ReplayClient
+
+TEXT = "Methods. Strain X was grown in BG-11 at 30 °C.\n\nResults. Biomass was 1.2 g/L."
+
+
+def _flags(conn, rid):
+    return {f["code"] for f in json.loads(conn.execute("SELECT flags_json FROM records WHERE id=?",
+                                                       (rid,)).fetchone()[0])}
+
+
+# ---------- prompt ----------
+
+def test_prompt_example_is_generated_from_fields_and_version_bumped():
+    ex = extract.response_example()
+    assert set(ex) == {"source", "conditions", "observations"}
+    assert list(ex["source"]) == [f.name for f in ai_fields("source")]
+    assert list(ex["conditions"][0]) == [f.name for f in ai_fields("condition")]
+    assert list(ex["observations"][0]) == [f.name for f in ai_fields("observation")]
+    assert ex["observations"][0]["condition_ref"] == "..."                     # link labels are bare strings
+    assert ex["observations"][0]["record_role"] == {"value": "...", "quote": None}  # no quote needed
+    prompt = extract.build_system_prompt()
+    assert json.dumps(ex, ensure_ascii=False) in prompt
+    assert "1. Extract only what the text states explicitly. Do not infer, compute or convert." in prompt
+    assert extract.PROMPT_VERSION == "v2"
+
+
+# ---------- parse_response ----------
+
+def test_parse_three_levels():
+    raw = json.dumps({
+        "source": {"doi": {"value": "10.1/x", "quote": "10.1/x"}},
+        "conditions": [{"condition_key": "c1", "genus": {"value": "Chlorella", "quote": "Chlorella"}}],
+        "observations": [{"condition_ref": "c1", "value_numeric": {"value": 1.2, "quote": "1.2 g/L"}}],
+    })
+    p = parse_response(raw)
+    assert p.missing_layers == [] and p.dropped_fields == []
+    assert p.source.get("doi") == "10.1/x"
+    assert p.conditions[0].get("condition_key") == "c1"
+    assert p.observations[0].get("value_numeric") == "1.2"
+    assert [k for k, _ in p.records()] == ["source", "condition", "observation"]
+
+
+def test_parse_missing_layer_is_reported_and_keeps_data():
+    p = parse_response('{"observations": [{"condition_ref": "c1", "analyte": {"value": "biomass", "quote": "x"}}]}')
+    assert p.missing_layers == ["source", "conditions"]
+    assert p.source is None and p.conditions == []
+    assert len(p.observations) == 1 and p.observations[0].get("analyte") == "biomass"
+    assert "missing layers: source, conditions" in p.notes()
+
+
+def test_parse_handles_fences_and_reports_unknown_fields():
+    raw = 'Sure:\n```json\n{"source": null, "conditions": [{"condition_key": "c1", "genus": "Chlorella", ' \
+          '"bogus": 1}], "observations": []}\n```'
+    p = parse_response(raw)
+    assert p.conditions[0].get("genus") == "Chlorella"
+    assert "bogus" not in p.conditions[0].fields
+    assert p.dropped_fields == ["conditions[0].bogus"]
+
+
+@pytest.mark.parametrize("raw", [
+    "no json here",
+    '{"source": {"doi": {"value": "10.1/x", "quote": "10.1',  # truncated
+    '{"records": []}',                                        # old v1 shape
+    '{"source": {}, "conditions": {"a": 1}}',                 # layer of the wrong type
+    '{"conditions": ["not an object"]}',
+])
+def test_parse_rejects_incomplete_or_malformed(raw):
+    with pytest.raises(ParseError):
+        parse_response(raw)
+
+
+# ---------- extraction ----------
+
+def test_incomplete_json_is_an_error_and_raw_is_kept(conn):
+    doc = add_document(conn, "t", TEXT, 1000)
+    truncated = '{"conditions": [{"condition_key": "c1", "genus": {"value": "Strain'
+    s = extract_document(conn, doc, ReplayClient([truncated]))
+    assert (s.runs, s.records, s.failed_runs) == (1, 0, 1)
+    run = conn.execute("SELECT status, raw_response, error FROM extraction_runs").fetchone()
+    assert run["status"] == "parse_error" and run["raw_response"] == truncated
+    assert "incomplete JSON" in run["error"]
+
+
+def test_missing_layers_are_flagged_not_dropped(conn):
+    doc = add_document(conn, "t", TEXT, 1000)
+    raw = json.dumps({"observations": [{"condition_ref": "c1",
+                                        "analyte": {"value": "Biomass", "quote": "Biomass was 1.2 g/L"}}]})
+    extract_document(conn, doc, ReplayClient([raw]))
+    rows = conn.execute("SELECT id, kind, parent_id FROM records ORDER BY id").fetchall()
+    assert [r["kind"] for r in rows] == ["observation", "source"]     # empty source created by the system
+    assert "condition_ref_not_found" in _flags(conn, rows[0]["id"]) and rows[0]["parent_id"] is None
+    assert "layer_missing" in _flags(conn, rows[1]["id"])
+    assert "missing layers" in conn.execute("SELECT error FROM extraction_runs").fetchone()[0]
+
+
+def test_condition_ref_mismatch_is_flagged_and_kept(conn):
+    doc = add_document(conn, "t", TEXT, 1000)
+    raw = json.dumps({
+        "source": {"doi": {"value": "10.1/x", "quote": None}},
+        "conditions": [{"condition_key": "c30", "genus": {"value": "Strain X", "quote": "Strain X"}}],
+        "observations": [{"condition_ref": "c25", "analyte": {"value": "Biomass", "quote": "Biomass was 1.2 g/L"}}],
+    })
+    extract_document(conn, doc, ReplayClient([raw]))
+    obs = conn.execute("SELECT id, parent_id, proposed_json FROM records WHERE kind='observation'").fetchone()
+    assert obs["parent_id"] is None
+    assert json.loads(obs["proposed_json"])["fields"]["condition_ref"]["value"] == "c25"
+    assert "condition_ref_not_found" in _flags(conn, obs["id"])
+    cond = conn.execute("SELECT parent_id FROM records WHERE kind='condition'").fetchone()
+    assert cond["parent_id"] == conn.execute("SELECT id FROM records WHERE kind='source'").fetchone()[0]
+
+
+def test_links_resolve_across_segments(conn):
+    doc = add_document(conn, "t", TEXT, 10)  # two segments
+    llm = ReplayClient([
+        '{"conditions": [{"condition_key": "c1", "genus": {"value": "Strain X", "quote": "Strain X"}}]}',
+        '{"observations": [{"condition_ref": "c1", "analyte": {"value": "Biomass", "quote": "Biomass"}}]}',
+    ])
+    s = extract_document(conn, doc, llm)
+    assert s.runs == 2 and s.failed_runs == 0
+    cond, obs = (conn.execute("SELECT id, parent_id FROM records WHERE kind=?", (k,)).fetchone()
+                 for k in ("condition", "observation"))
+    assert obs["parent_id"] == cond["id"]
+
+
+def test_llm_exception_recorded(conn):
+    class Boom(ReplayClient):
+        def complete(self, s, u):
+            raise RuntimeError("down")
+    doc = add_document(conn, "t", "Para one.", 100)
+    s = extract_document(conn, doc, Boom([]))
+    assert s.failed_runs == 1
+    assert conn.execute("SELECT status FROM extraction_runs").fetchone()["status"] == "llm_error"
+    assert conn.execute("SELECT COUNT(*) FROM records").fetchone()[0] == 0  # no placeholder without an answer
+
+
+def test_demo_flags(conn, demo):
+    rows = conn.execute("SELECT id, kind, parent_id FROM records ORDER BY id").fetchall()
+    assert [r["kind"] for r in rows] == ["source"] + ["condition"] * 2 + ["observation"] * 5
+    assert [r["parent_id"] for r in rows] == [None, 1, 1, 2, 3, 2, None, 3]
+    codes = [_flags(conn, r["id"]) for r in rows]
+    assert codes[0] == set()
+    assert codes[1] == {"missing_vs_sibling"}                          # C2 has phase_duration, C1 not
+    assert codes[2] == {"choice_not_allowed", "quote_not_found",       # "lake water"; paraphrased quote
+                        "missing_vs_sibling"}                          # C1 has light, photoperiod, ...
+    assert codes[3] == set() and codes[5] == set()
+    # 0.79 vs 0.97; repeated in Discussion
+    assert codes[4] == {"value_not_in_quote", "value_numeric_mismatch", "duplicate_observation"}
+    assert codes[6] == {"condition_ref_not_found"}                     # heat_30C does not exist
+    assert codes[7] == codes[4]
+
+
+def test_proposed_and_raw_are_immutable(conn, demo):
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute("UPDATE records SET proposed_json='{}' WHERE id=1")
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute("UPDATE extraction_runs SET raw_response='x' WHERE id=1")
