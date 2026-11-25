@@ -6,3 +6,6 @@ __pycache__/
 data/
 *.db
 exports/
+
+# Project spreadsheet from collaborators: keep local, never publish
+docs/Microalgae_Data.xlsx
