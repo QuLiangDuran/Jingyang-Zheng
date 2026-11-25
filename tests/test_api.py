@@ -17,7 +17,7 @@ def test_end_to_end(tmp_path):
 
     assert client.get("/").status_code == 200
     meta = client.get("/api/meta").json()
-    assert meta["fields"][0]["name"] == "study_id" and meta["schema_version"] == "microalgae-1"
+    assert meta["fields"][0]["name"] == "study_id" and meta["schema_version"] == "microalgae-2"
     assert "habitat_class" in meta["temp_choice_fields"]
     assert len(client.get("/api/records?status=pending").json()) == 8
     assert [r["id"] for r in client.get("/api/records?kind=observation&flagged=false").json()] == [4, 6]

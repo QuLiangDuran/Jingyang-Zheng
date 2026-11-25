@@ -64,6 +64,8 @@ def _rows_for_document(conn: sqlite3.Connection, document_id: int, title: str) -
             "comparator_observation_id": rid[comp_o]["system_id"] if comp_o else None,
             "review_status": o["status"], "reviewer_id": o["reviewer"], "reviewed_at": o["reviewed_at"],
             "reviewer_notes": reviewer_notes(conn, o["id"]), "is_electrical": electrical,
+            # v1: strain_id is a copy of the reported code (FIELDS.md question 24)
+            "strain_id": content["condition"].get("strain_accession_reported"),
         }
         row: dict = {}
         for f in EXPORT_FIELDS:

@@ -34,10 +34,36 @@ def test_prompt_example_is_generated_from_fields_and_version_bumped():
     assert json.dumps(ex, ensure_ascii=False) in prompt
     for f in ai_fields("condition") + ai_fields("observation") + ai_fields("source"):
         assert f'- "{f.name}" (' in prompt                                   # every AI field is described
-    assert "1. Extract only what the text states explicitly. Do not infer, compute or convert." in prompt
-    assert "3. If a field is not stated, omit it." in prompt
     assert "use one of: growth |" in prompt and "dry_biomass" in prompt        # temporary trait / metric lists
-    assert extract.PROMPT_VERSION == "v3"
+    assert extract.PROMPT_VERSION == "v4"
+
+
+def test_merged_rules_use_fields_py_names_and_decisions():
+    prompt = extract.build_system_prompt()
+    for text in (
+        "Current focus: bio-photovoltaics (BPV).",
+        "Never infer or guess a value that is not written, and do\n  not convert units.",        # D
+        "parse value_numeric from value_original",                                            # D: normalization
+        'Fields marked "no quote needed" are judgements and\n  take no quote.',                # B
+        "If a field is not stated, omit it.",                                                  # C, E
+        "Do not extract a condition on its own",                                               # R
+        "Only skip a result if you cannot tell which organism AND which condition produced it.",  # S
+        "identity_resolution: strain | species_only | genus_only | named_mixture | unresolved",  # H
+        "strain_accession_reported: fill ONLY if the paper gives",                             # I
+        "identity_resolution = named_mixture",                                                 # J
+        "culture_type = mixed culture",                                                        # J
+        "value_status = observation",                                                          # L
+        "trait_group = bioelectrical",                                                         # M
+        "potential_applied = yes | no | unknown",                                              # O
+        "growth_rate -> specific_growth_rate", "biomass -> dry_biomass",                       # Q
+        "exclusion_reason as one of no_original_data | no_eligible_organism | no_relevant_result | cannot_link_result",
+    ):
+        assert text in prompt, text
+    # names from the rules file that do not exist in fields.py must not reach the model
+    for old in ("leads_to_original_papers", "organism_level", "strain_code", "device_type", "applied_voltage",
+                "value_type", '"organism_name"', "is_electrical", "One record per distinct result"):
+        assert old not in prompt, old
+    assert '- "strain_id"' not in prompt                                       # copied by the system, not the AI
 
 
 def test_prompt_leaves_out_fields_the_ai_does_not_fill():
@@ -45,7 +71,7 @@ def test_prompt_leaves_out_fields_the_ai_does_not_fill():
     for name in ("study_id", "condition_id", "observation_id", "review_status", "reviewer_id",
                  "accepted_taxon_name", "availability_status", "supplier_url", "is_electrical"):
         assert f'"{name}"' not in prompt
-    assert len(prompt) < 21_000  # v2 was 26,360 chars; guards against the example growing back
+    assert len(prompt) < 26_000  # v2 26,360; v3 20,059; v4 adds the merged rules. Guards against growth.
 
 
 # ---------- parse_response ----------

@@ -115,7 +115,10 @@ pending ──确认──▶ approved ──重新打开──▶ pending
   - 第 2 块起，提示词里附上已提取的条件（`condition_key`、生物名、株系、组名、温度、阶段），要求复用这些 key，只新增新条件；
   - 论文层只取第 1 块的；后面的块如果又返回论文层，不建记录，写进 run 的 `error`（原始回答里仍在）；
   - 关联本来就在全文档范围解析，同一个 key 出现两个条件时标 `duplicate_key`。
-- AI 返回 `{"source": {...}, "conditions": [...], "observations": [...]}`，没写的字段直接省略。提示词里的字段说明和 JSON 示例都由 `fields.py` 自动生成；JSON 示例每层只示范 3–4 个字段。later、系统编号、审核层、系统推出的字段不发给模型。`PROMPT_VERSION = v3`，`SCHEMA_VERSION = microalgae-1`。
+- AI 返回 `{"source": {...}, "conditions": [...], "observations": [...]}`，没写的字段直接省略。提示词里的字段说明和 JSON 示例都由 `fields.py` 自动生成；JSON 示例每层只示范 3–4 个字段。later、系统编号、审核层、系统推出的字段不发给模型。`PROMPT_VERSION = v4`，`SCHEMA_VERSION = microalgae-2`。
+- v4 合并了团队的阅读规则（本地 `docs/extraction_rules_prompt.txt`，不公开）：规则里的字段名统一换成 fields.py 的名字，选项列表都从 fields.py 生成；规则里提到的 9 个性状映射到 metric_code（`TRAIT_TO_METRIC`）。规则文件本身不改。
+- `strain_id` 不由 AI 填：AI 只填 `strain_accession_reported`（原文编号原样），导出时系统把它复制到 `strain_id`。
+- 新增 `potential_applied`（yes / no / unknown，电学数据必填）：区分“没施加外部电压”和“原文没写”。
 - trait_group / metric_code 是 Text 字段，但提示词要求从临时列表（`TEMP_TRAIT_GROUPS` / `TEMP_METRIC_CODES`）里选；列表以外的值标 `not_in_temp_list`（warning）。
 - 无论解析是否成功，原始回答都先入库。
   - 输出被截断（`finish_reason = length`）→ `parse_error`，写明“输出被截断”，不自动续写。输出上限由 `LLM_MAX_OUTPUT_TOKENS` 设定（默认 16000）。
@@ -138,6 +141,7 @@ pending ──确认──▶ approved ──重新打开──▶ pending
 | `layer_missing` | error | 条件没有论文可挂，或论文记录是系统建的空记录 |
 | `ambiguous_ref` / `duplicate_key` / `ref_not_found` | warning | 关联标签有歧义、重复，或 control / comparator 找不到 |
 | `value_numeric_mismatch` | error | `value_numeric` 不是 `value_original` 里的数字之一（能识别 ±、范围、科学计数法如 `1.2 × 10⁶`、`1–2 × 10^6`），或 `value_original` 没有原样出现在它的引文里 |
+| `applied_potential_missing` | warning | `potential_applied` 是 yes，但没有 `applied_potential_value` |
 | `not_in_temp_list` | warning | trait_group / metric_code 不在临时列表里 |
 | `duplicate` | warning | 论文层、条件层：同一文档中另有一条内容完全相同的同层记录 |
 | `duplicate_observation` | warning | 观测值：同一条件 + metric_code + 数值 + 单位 + 时间的另一条观测值（引文不同也算） |

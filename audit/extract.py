@@ -15,11 +15,11 @@ from dataclasses import dataclass, field
 
 from .db import now
 from .documents import segment_text
-from .fields import SCHEMA_VERSION, FieldValue, RecordContent, ai_fields
+from .fields import FIELDS_BY_NAME, SCHEMA_VERSION, TRAIT_TO_METRIC, FieldValue, RecordContent, ai_fields
 from .llm import LLMClient
 from .review_service import refresh_document
 
-PROMPT_VERSION = "v3"
+PROMPT_VERSION = "v4"
 
 # JSON key of each level in the AI response.
 LAYER_KEYS = {"source": "source", "condition": "conditions", "observation": "observations"}
@@ -75,23 +75,92 @@ def empty_response() -> dict:
     return {"source": None, "conditions": [], "observations": []}
 
 
+def _options(name: str) -> str:
+    return " | ".join(FIELDS_BY_NAME[name].choices)
+
+
 def build_system_prompt() -> str:
+    """Rules merged from docs/extraction_rules_prompt.txt (field names mapped to fields.py,
+    decisions of 2026-11-25); every option list and field name comes from fields.py."""
     field_lines = "\n\n".join(
-        f'"{LAYER_KEYS[lv]}" -- {LEVEL_NAMES[lv]}:\n' +"\n".join(_field_line(f) for f in ai_fields(lv))
+        f'"{LAYER_KEYS[lv]}" -- {LEVEL_NAMES[lv]}:\n' + "\n".join(_field_line(f) for f in ai_fields(lv))
         for lv in LAYER_KEYS)
-    return f"""You extract structured data records from scientific paper text.
+    trait_map = ", ".join(f"{t} -> {' / '.join(ms)}" for t, ms in TRAIT_TO_METRIC.items())
+    return f"""You are extracting records for the MicroalgaeMatch database from the text of ONE scientific paper.
+Current focus: bio-photovoltaics (BPV).
 
 Fields of each record:
 {field_lines}
 
-Rules:
-1. Extract only what the text states explicitly. Do not infer, compute or convert.
-2. For every field with a value, "quote" MUST be copied verbatim from the text
-   (a short span, ideally one sentence or less) that shows the value.
-3. If a field is not stated, omit it.
-4. One record per distinct result. If there are no results, return {json.dumps(empty_response())}.
-5. Respond with JSON only, no commentary, in this shape (only a few fields are shown;
-   use the field names listed above as keys):
+=== RECORD STRUCTURE ===
+- Return three levels: "source" (the paper), "conditions" and "observations".
+- One observation = one measured trait (one quantity at one time). It links to exactly one
+  condition: its "condition_ref" is that condition's "condition_key".
+- One condition = one organism + one set of conditions (cultivation and, for electrical
+  results, the device setup).
+- Do not extract a condition on its own: only conditions that at least one observation links to.
+- If you can tell which organism produced a result but not all of its conditions, still extract
+  it: create a condition with the organism and whatever is stated, and link the observation to it.
+  Only skip a result if you cannot tell which organism AND which condition produced it.
+
+=== VALUES, QUOTES, MISSING DATA ===
+- Extract only what the paper states. Never infer or guess a value that is not written, and do
+  not convert units.
+- Allowed format normalization: parse value_numeric from value_original; map the paper's wording
+  to one of the listed options; split a light:dark cycle such as 16:8 into light_hours and dark_hours.
+- For every field you fill, "quote" MUST be copied verbatim from the text (a short span, ideally
+  one sentence or less) that shows the value. Fields marked "no quote needed" are judgements and
+  take no quote.
+- If a field is not stated, omit it. Missing details do NOT remove a record; missing required
+  fields are flagged by the system.
+
+=== PAPER-LEVEL CHECK (do this first) ===
+- paper_type: {_options("paper_type")} | other.
+- Extract conditions and observations ONLY from original research (the authors collected the
+  data themselves). For a review, editorial or pure computer model, return only "source".
+
+=== ORGANISM RULES ===
+- organism_name_reported: the name exactly as written in the paper.
+- identity_resolution: {_options("identity_resolution")}.
+- strain_accession_reported: fill ONLY if the paper gives a strain or collection code, copied
+  exactly. Do NOT guess a strain code. Do NOT apply a species-level result to a specific strain
+  or to every strain of that species.
+- If the result comes from a NAMED mixture of organisms, make ONE condition with
+  identity_resolution = named_mixture, the members as written in organism_name_reported, and
+  culture_type = mixed culture. Do not split it into one condition per member.
+- Do NOT extract: seaweed/macroalgae, land plants, purified pigments, isolated cell parts
+  (e.g. thylakoids, photosystems), or unidentified mixtures that cannot be tied to a named
+  organism or defined mixture.
+- If a paper has both eligible and ineligible experiments, extract only the eligible ones.
+
+=== TRAIT RULES ===
+- trait_group and metric_code: use the values listed in the field descriptions above.
+  Traits of interest and their metric_code: {trait_map}.
+- A clearly described non-numeric observation counts too: put it in value_category and set
+  value_status = observation.
+- Electrical results (voltage, current, power density and other electrical outputs):
+  trait_group = bioelectrical. Chlorophyll or photosynthesis measurements are NOT bioelectrical.
+- Do NOT extract from: cultivation-only descriptions, growth recipes, device descriptions without
+  a measured trait, or algae used only as dead biomass or fuel without living cells being part of
+  the electrical system.
+
+=== CONDITION RULES ===
+- Growth results: medium_name, temperature (and other treatment details given).
+- Electrical results: system_type, and potential_applied = {_options("potential_applied")}
+  (unknown = the paper does not say), plus applied_potential_value and applied_potential_unit if given.
+- group_type: which group or treatment the result belongs to (e.g. control vs. treated).
+
+=== PAPER VERDICT ===
+paper_verdict: {_options("paper_verdict")}.
+- include: at least one eligible observation AND (for the BPV focus) at least one electrical one.
+- exclude: give exclusion_reason as one of {_options("exclusion_reason")}.
+- uncertain: the needed information is probably in figures, supplements or another document you
+  were not given. Say what is missing in uncertain_reason.
+
+=== OUTPUT ===
+- If there are no records, return {json.dumps(empty_response())}.
+- Respond with JSON only, no commentary, in this shape (only a few fields are shown; use the
+  field names listed above as keys):
 {json.dumps(response_example(), ensure_ascii=False)}"""
 
 
@@ -118,7 +187,7 @@ def _known_conditions(conn: sqlite3.Connection, document_id: int) -> list[dict]:
     for r in conn.execute("SELECT current_json FROM records WHERE document_id=? AND kind='condition' "
                           "AND status != 'rejected' ORDER BY id", (document_id,)):
         c = RecordContent.model_validate_json(r["current_json"])
-        item = {k: c.get(k) for k in ("condition_key", "organism_name_reported", "strain_id", "group_type",
+        item = {k: c.get(k) for k in ("condition_key", "organism_name_reported", "strain_accession_reported", "group_type",
                                       "temperature", "condition_phase") if c.get(k)}
         if item.get("condition_key"):
             out.append(item)

@@ -103,6 +103,8 @@ def test_missing_required_fields_are_flagged():
     elec = {f["field"] for f in check_record("condition", cond, "", electrical=True)}
     assert "medium_name" in plain and "anode_material" not in plain        # electrical essentials only ...
     assert "anode_material" in elec                                        # ... for electrical conditions
+    assert "potential_applied" in elec and "potential_applied" not in plain
+    assert "strain_id" not in elec | plain                                 # copied by the system, not checked
 
     src = RecordContent.empty("source")
     src.fields["paper_verdict"].value = "exclude"
@@ -244,3 +246,28 @@ def test_list_filters(conn, demo):
     assert [r["id"] for r in svc.list_records(conn, kind="condition")] == [2, 3]
     assert [r["id"] for r in svc.list_records(conn, kind="observation", flagged=False)] == [4, 6]
     assert json.loads(json.dumps(svc.list_records(conn)[0]))["summary"].endswith("include")
+
+
+def _cond_flags(**values):
+    c = RecordContent.empty("condition")
+    for k, v in values.items():
+        c.fields[k].value = v
+    return {(f["code"], f["field"], f["level"]) for f in check_record("condition", c, "", electrical=True)}
+
+
+def test_potential_applied_yes_needs_a_value():
+    assert ("applied_potential_missing", "applied_potential_value", "warning") in _cond_flags(potential_applied="yes")
+    assert not any(code == "applied_potential_missing" for code, _, _ in
+                   _cond_flags(potential_applied="yes", applied_potential_value="0.5"))
+    for v in ("no", "unknown"):
+        assert not any(code == "applied_potential_missing" for code, _, _ in _cond_flags(potential_applied=v))
+    assert ("choice_not_allowed", "potential_applied", "error") in _cond_flags(potential_applied="maybe")
+
+
+def test_potential_applied_edit_accepts_only_its_options(conn, demo):
+    with pytest.raises(svc.Invalid):
+        svc.edit_field(conn, 2, "a", "potential_applied", "x", value="maybe")
+    r = svc.edit_field(conn, 2, "a", "potential_applied", "原文写了 0.5 V", value="yes")
+    assert "applied_potential_missing" in _codes(r)
+    r = svc.edit_field(conn, 2, "a", "applied_potential_value", "补上", value="0.5", quote="The external load was 10")
+    assert "applied_potential_missing" not in _codes(r)

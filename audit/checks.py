@@ -54,6 +54,10 @@ def check_record(kind: str, content: RecordContent, doc_text: str, electrical: b
 
     if kind == "observation":
         flags += _value_numeric_consistency(content)
+    if kind == "condition" and normalize(content.get("potential_applied") or "") == "yes" \
+            and not content.get("applied_potential_value"):
+        flags.append(flag("applied_potential_missing", "warning",
+                          "potential_applied 是 yes，但没有 applied_potential_value", "applied_potential_value"))
     if kind == "source":
         verdict = normalize(content.get("paper_verdict") or "")
         for v, need in (("exclude", "exclusion_reason"), ("uncertain", "uncertain_reason")):

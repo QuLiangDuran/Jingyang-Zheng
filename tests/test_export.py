@@ -22,9 +22,10 @@ def test_export_columns_follow_extraction_template():
     expected = ["statistic_type" if h == "statistice_type" else h for h in _template_header()]
     expected.insert(expected.index("metric_code") + 1, "record_role")
     expected.insert(expected.index("mediator_concentration") + 1, "mediator_concentration_unit")
+    expected.insert(expected.index("applied_potential_value"), "potential_applied")   # new in microalgae-2
     expected += [f.name for f in PAPER_FIELDS]
     cols = export_columns()
-    assert len(expected) == 159
+    assert len(expected) == 160
     assert cols[:len(expected)] == expected
     rest = cols[len(expected):]
     assert all(c.endswith("_quote") for c in rest[:-9]) and "value_numeric_quote" in rest
@@ -71,6 +72,8 @@ def test_row_content(conn, demo):
     assert r4["is_electrical"] is False and r4["electrode_area_value"] == "N/A"      # not an electrical row
     assert r6["is_electrical"] is True and r6["electrode_area_value"] is None         # electrical, policy "—"
     assert r4["anode_material"] == "indium tin oxide"                                 # real values kept
+    assert r4["strain_id"] == r4["strain_accession_reported"] == "DEMO-17"           # copied by the system
+    assert r6["potential_applied"] == "unknown"
     assert r4["condition_source_locator"] == "Methods"
 
 

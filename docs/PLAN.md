@@ -31,10 +31,10 @@
 | 22 | 虚构微藻示例 + 测试（40 个） | `samples/`、`tests/` | 完成 |
 | 23 | 高亮吞字修复；duplicate_observation、missing_vs_sibling、value_numeric_mismatch | `static/`、`checks.py`、`review_service.py` | 完成 |
 | 24 | 整篇一次提取（超长才分块，后续块复用 condition_key）；截断标 parse_error；规则 3 改为省略；JSON 示例精简；trait/metric 临时列表；`PROMPT_VERSION = v3` | `extract.py`、`llm.py`、`config.py`、`fields.py` | 完成 |
+| 25 | 合并阅读规则（本地 `docs/extraction_rules_prompt.txt`）；`strain_id` 由系统复制；新增 `potential_applied`；`PROMPT_VERSION = v4`，`SCHEMA_VERSION = microalgae-2` | `extract.py`、`fields.py`、`checks.py`、`export.py` | 完成 |
 
 ## 下一步（需要你决定）
 
-1. **合并 `docs/extraction_rules_prompt.txt` 的规则**：文件放进 `docs/` 后，列出与现有规则 1–5 重复或冲突的条目给你确认，再合并进 `build_system_prompt`；`PROMPT_VERSION` 再加一。
-2. 拿到 Carly 的答复后（见本地 `docs/FIELDS.md` 末尾的待确认问题，暂时不公开），替换 `TEMP_CHOICES`、电学判定清单，`SCHEMA_VERSION` 加一。
-3. 用真实 API key 跑一篇论文，看提取质量。
-4. 之后再排：PDF 解析、初筛、读图、MCP。
+1. 拿到 Carly 的答复后（见本地 `docs/FIELDS.md` 末尾的待确认问题，暂时不公开），替换 `TEMP_CHOICES`、电学判定清单，`SCHEMA_VERSION` 加一。
+2. 用真实 API key 跑一篇论文，看提取质量。
+3. 之后再排：PDF 解析、初筛、读图、MCP。

@@ -59,7 +59,7 @@ def test_highlighted_text_equals_source_text(conn, demo):
     # the cases reported from the browser
     c1 = results[[r["id"] for r in recs].index(2)]["marked"]
     names = [f["name"] for f in recs[1]["fields"]]
-    assert c1[str(names.index("strain_id"))] == "Chlorella vulgaris strain DEMO-17"
+    assert c1[str(names.index("strain_accession_reported"))] == "Chlorella vulgaris strain DEMO-17"
     assert c1[str(names.index("working_volume"))] == "a working volume of 150 mL"
 
 

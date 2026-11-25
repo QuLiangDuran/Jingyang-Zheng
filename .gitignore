@@ -12,3 +12,6 @@ docs/Microalgae_Data.xlsx
 
 # Field list derived from the collaborators spreadsheet: keep local, never publish
 docs/FIELDS.md
+
+# Reading rules from the team: keep local, never publish
+docs/extraction_rules_prompt.txt

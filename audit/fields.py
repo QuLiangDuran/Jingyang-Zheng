@@ -24,7 +24,7 @@ from pydantic import BaseModel
 
 from .textmatch import normalize
 
-SCHEMA_VERSION = "microalgae-1"
+SCHEMA_VERSION = "microalgae-2"  # 2: strain_id copied by the system; new potential_applied
 
 Level = Literal["source", "condition", "observation"]
 LEVELS: tuple[str, ...] = ("source", "condition", "observation")
@@ -125,14 +125,27 @@ TEMP_METRIC_CODES = [
     *sorted(ELECTRICAL_METRIC_CODES),
 ]
 TEMP_SUGGESTED = {"trait_group": TEMP_TRAIT_GROUPS, "metric_code": TEMP_METRIC_CODES}
+# The nine traits named in docs/extraction_rules_prompt.txt -> metric_code values above.
+TRAIT_TO_METRIC = {
+    "cell_size": ["cell_size"],
+    "cell_shape": ["cell_shape"],
+    "growth_rate": ["specific_growth_rate"],
+    "biomass": ["dry_biomass", "biomass_concentration"],
+    "chlorophyll": ["total_chlorophyll", "chlorophyll_a", "chlorophyll_b"],
+    "survival": ["survival_rate"],
+    "voltage": ["voltage", "open_circuit_voltage"],
+    "current": ["current", "current_density"],
+    "power_density": ["power_density", "max_power_density"],
+}
+assert all(m in TEMP_METRIC_CODES for ms in TRAIT_TO_METRIC.values() for m in ms)
 # ===================================================================== end TEMPORARY
 
 # AI fields whose value must appear word-for-word in its quote.
-VERBATIM = {"doi", "article_title", "organism_name_reported", "strain_id", "strain_accession_reported",
+VERBATIM = {"doi", "article_title", "organism_name_reported", "strain_accession_reported",
             "value_original", "unit_original"}
 # AI fields that are judgements/labels rather than quotable facts: no quote required.
 NO_QUOTE = {"source_type", "extraction_method", "source_locator", "evidence_excerpt", "identity_resolution",
-            "record_role", "value_status", "trait_group", "metric_code", "paper_type", "paper_verdict", "exclusion_reason",
+            "record_role", "value_status", "trait_group", "metric_code", "potential_applied", "paper_type", "paper_verdict", "exclusion_reason",
             "uncertain_reason", "condition_source_locator"}
 
 
@@ -166,8 +179,8 @@ class FieldSpec(BaseModel):
 
 
 def _f(name, group, level, type_, essential, missing, filled_by, description, **kw) -> FieldSpec:
-    if type_ == "choice":
-        kw.setdefault("choices", TEMP_CHOICES[name])
+    if type_ == "choice" and "choices" not in kw:
+        kw["choices"] = TEMP_CHOICES[name]
     if name in TEMP_SUGGESTED:
         kw.setdefault("suggested", TEMP_SUGGESTED[name])
     return FieldSpec(
@@ -177,9 +190,10 @@ def _f(name, group, level, type_, essential, missing, filled_by, description, **
         electrical_only=group == "Electrical setup", **kw)
 
 
-# Template order (docs/Microalgae_Data.xlsx "Extraction Template"), with the two
-# Dictionary-only fields inserted: record_role after metric_code, and
-# mediator_concentration_unit after mediator_concentration.
+# Template order (docs/Microalgae_Data.xlsx "Extraction Template"), with three fields
+# inserted: record_role after metric_code and mediator_concentration_unit after
+# mediator_concentration (both in the Dictionary only), and the new potential_applied
+# before applied_potential_value.
 TEMPLATE_FIELDS: list[FieldSpec] = [
     # ---- Source ----
     _f("study_id", "Source", "source", "text", True, "Missing", "system_id",
@@ -221,7 +235,8 @@ TEMPLATE_FIELDS: list[FieldSpec] = [
        "Organism name exactly as reported, preserving sp. and other uncertainty."),
     _f("accepted_taxon_name", "Identity", "condition", "text", False, "N/A", "later",
        "The currently accepted scientific name, if checked against a taxonomy reference. Keep the paper’s wording separately."),
-    _f("strain_id", "Identity", "condition", "text", True, "Missing", "ai",
+    # v1: not filled by the AI; the system copies strain_accession_reported (see FIELDS.md question 24).
+    _f("strain_id", "Identity", "condition", "text", True, "Missing", "derived",
        "Reported strain or collection code, distinct from a row number."),
     _f("strain_accession_reported", "Identity", "condition", "text", False, "N/A", "ai",
        "The exact strain or collection code given in the source."),
@@ -365,6 +380,10 @@ TEMPLATE_FIELDS: list[FieldSpec] = [
        "Unit of the electrode area."),
     _f("electrode_area_basis", "Electrical setup", "condition", "choice", False, "", "ai",
        "Which area was reported, such as the exposed, projected, or measured active area."),
+    # New (not in the Dictionary): distinguishes "no voltage applied" from "not reported".
+    _f("potential_applied", "Electrical setup", "condition", "choice", True, "Missing", "ai",
+       "Whether an external voltage was applied by an instrument for this result: yes, no, or unknown "
+       "(unknown = the paper does not say).", choices=["yes", "no", "unknown"]),
     _f("applied_potential_value", "Electrical setup", "condition", "decimal", False, "", "ai",
        "Voltage held or applied by the instrument for this result, not the voltage produced by the device."),
     _f("applied_potential_unit", "Electrical setup", "condition", "choice", False, "", "ai",
