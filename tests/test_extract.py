@@ -21,21 +21,26 @@ def _flags(conn, rid):
 
 def test_prompt_example_is_generated_from_fields_and_version_bumped():
     ex = extract.response_example()
-    assert set(ex) == {"source", "conditions", "observations"}
-    for key, level in (("source", "source"), ("conditions", "condition"), ("observations", "observation")):
-        item = ex[key] if key == "source" else ex[key][0]
+    assert list(ex) == ["quotes", "source", "condition_templates", "conditions", "observations"]  # v8 compact
+    assert ex["quotes"] == {"q1": "...", "q2": "..."}
+    for item, level in ((ex["source"], "source"), (ex["condition_templates"]["T1"], "condition"),
+                        (ex["observations"][0], "observation")):
+        item = dict(item)
         names = [f.name for f in ai_fields(level)]
-        assert 3 <= len(item) <= 5 and set(item) <= set(names)              # short example, real field names
+        item.pop("not_stated", None)
+        item.pop("quote", None)                                              # v9 default quote of a template
+        assert 2 <= len(item) <= 5 and set(item) <= set(names)              # short example, real field names
         assert list(item) == [n for n in names if n in item]                # in field-list order
-    assert ex["conditions"][0]["condition_key"] == "..."                     # required links are shown,
-    assert ex["observations"][0]["condition_ref"] == "..."                   # as bare string labels
-    assert {"value": "...", "quote": None} in ex["observations"][0].values()  # a field without a quote
+    assert ex["conditions"][0] == {"condition_key": "...", "template": ["T1", "T2"], "not_stated": ["..."]}  # v9
+    assert ex["observations"][0]["condition_ref"] == "..."                   # links are bare string labels
+    assert ["...", "q1"] in ex["observations"][0].values()                   # a quoted field refers to a quote id
+    assert "..." in [v for k, v in ex["observations"][0].items() if k != "condition_ref"]  # a field without a quote
     prompt = extract.build_system_prompt()
-    assert json.dumps(ex, ensure_ascii=False) in prompt
+    assert json.dumps(extract.response_example(), ensure_ascii=False) in prompt
     for f in ai_fields("condition") + ai_fields("observation") + ai_fields("source"):
         assert f'- "{f.name}" (' in prompt                                   # every AI field is described
     assert "use one of: growth |" in prompt and "dry_biomass" in prompt        # temporary trait / metric lists
-    assert extract.PROMPT_VERSION == "v4"
+    assert extract.PROMPT_VERSION == "v10"
 
 
 def test_merged_rules_use_fields_py_names_and_decisions():
@@ -44,7 +49,7 @@ def test_merged_rules_use_fields_py_names_and_decisions():
         "Current focus: bio-photovoltaics (BPV).",
         "Never infer or guess a value that is not written, and do\n  not convert units.",        # D
         "parse value_numeric from value_original",                                            # D: normalization
-        'Fields marked "no quote needed" are judgements and\n  take no quote.',                # B
+        'Fields marked "no quote needed" are judgements and\n  take no quote',                  # B
         "If a field is not stated, omit it.",                                                  # C, E
         "Do not extract a condition on its own",                                               # R
         "Only skip a result if you cannot tell which organism AND which condition produced it.",  # S
@@ -56,6 +61,12 @@ def test_merged_rules_use_fields_py_names_and_decisions():
         "trait_group = bioelectrical",                                                         # M
         "potential_applied = yes | no | unknown",                                              # O
         "growth_rate -> specific_growth_rate", "biomass -> dry_biomass",                       # Q
+        "PAPER SELECTION (paper_verdict)",                                                     # selection vs scope
+        "extract EVERY measured\n   trait the paper reports",
+        "The electrical criterion is ONLY for selection",
+        "examples, NOT a limit",
+        "photosynthesis -> fv_fm",
+        "write a short descriptive\n  snake_case metric_code",
         "exclusion_reason as one of no_original_data | no_eligible_organism | no_relevant_result | cannot_link_result",
     ):
         assert text in prompt, text
@@ -71,7 +82,7 @@ def test_prompt_leaves_out_fields_the_ai_does_not_fill():
     for name in ("study_id", "condition_id", "observation_id", "review_status", "reviewer_id",
                  "accepted_taxon_name", "availability_status", "supplier_url", "is_electrical"):
         assert f'"{name}"' not in prompt
-    assert len(prompt) < 26_000  # v2 26,360; v3 20,059; v4 adds the merged rules. Guards against growth.
+    assert len(prompt) < 32_000  # v9 (30,929) several templates, default quotes, series rules; v8 (29,306) adds the compact format and the Yuntian rules; v2 26,360; v3 20,059; v4 adds the merged rules; v5 (26,068) the selection/scope split; v7 (27,628) not_stated + quote/mode/relative rules. Guards against growth.
 
 
 # ---------- parse_response ----------
@@ -258,7 +269,7 @@ def test_demo_flags(conn, demo):
     assert [r["kind"] for r in rows] == ["source"] + ["condition"] * 2 + ["observation"] * 5
     assert [r["parent_id"] for r in rows] == [None, 1, 1, 2, 3, 2, None, 3]
     codes = [_flags(conn, r["id"]) for r in rows]
-    assert codes[0] == set()
+    assert codes[0] == {"uncovered_result"}       # v10 recall: the 0.97 g/L sentence (that observation's quote is paraphrased)
     assert codes[1] == {"missing_vs_sibling"}                          # C2 has phase_duration, C1 not
     assert codes[2] == {"choice_not_allowed", "quote_not_found",       # "lake water"; paraphrased quote
                         "missing_vs_sibling"}                          # C1 has light, photoperiod, ...
@@ -274,3 +285,26 @@ def test_proposed_and_raw_are_immutable(conn, demo):
         conn.execute("UPDATE records SET proposed_json='{}' WHERE id=1")
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute("UPDATE extraction_runs SET raw_response='x' WHERE id=1")
+
+
+def test_delete_document_removes_everything_it_owns(conn, demo):
+    other = load_demo(conn)
+    extract.delete_document(conn, demo)
+    for table in ("documents", "segments", "extraction_runs", "records"):
+        col = "id" if table == "documents" else "document_id"
+        assert conn.execute(f"SELECT COUNT(*) FROM {table} WHERE {col}=?", (demo,)).fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM records WHERE document_id=?", (other,)).fetchone()[0] > 0
+
+
+def test_delete_document_refuses_once_reviewed(conn, demo):
+    from audit import review_service
+    rid = conn.execute("SELECT id FROM records WHERE document_id=? LIMIT 1", (demo,)).fetchone()[0]
+    review_service.approve(conn, rid, "tester")
+    with pytest.raises(ValueError, match="审核记录"):
+        extract.delete_document(conn, demo)
+    assert conn.execute("SELECT COUNT(*) FROM documents WHERE id=?", (demo,)).fetchone()[0] == 1
+
+
+def test_delete_missing_document_is_an_error(conn):
+    with pytest.raises(ValueError):
+        extract.delete_document(conn, 999)

@@ -125,13 +125,18 @@ TEMP_METRIC_CODES = [
     *sorted(ELECTRICAL_METRIC_CODES),
 ]
 TEMP_SUGGESTED = {"trait_group": TEMP_TRAIT_GROUPS, "metric_code": TEMP_METRIC_CODES}
-# The nine traits named in docs/extraction_rules_prompt.txt -> metric_code values above.
+# Example traits shown to the AI -> metric_code values above. These are EXAMPLES, not a limit:
+# the prompt asks for every measured trait (see the extraction scope in extract.py).
 TRAIT_TO_METRIC = {
     "cell_size": ["cell_size"],
     "cell_shape": ["cell_shape"],
     "growth_rate": ["specific_growth_rate"],
     "biomass": ["dry_biomass", "biomass_concentration"],
     "chlorophyll": ["total_chlorophyll", "chlorophyll_a", "chlorophyll_b"],
+    "carotenoids": ["carotenoids"],
+    "photosynthesis": ["fv_fm", "oxygen_evolution_rate", "photosynthetic_rate", "respiration_rate"],
+    "biomass_composition": ["lipid_content", "protein_content", "carbohydrate_content", "starch_content"],
+    "cell_density": ["cell_density", "optical_density"],
     "survival": ["survival_rate"],
     "voltage": ["voltage", "open_circuit_voltage"],
     "current": ["current", "current_density"],
@@ -146,7 +151,15 @@ VERBATIM = {"doi", "article_title", "organism_name_reported", "strain_accession_
 # AI fields that are judgements/labels rather than quotable facts: no quote required.
 NO_QUOTE = {"source_type", "extraction_method", "source_locator", "evidence_excerpt", "identity_resolution",
             "record_role", "value_status", "trait_group", "metric_code", "potential_applied", "paper_type", "paper_verdict", "exclusion_reason",
-            "uncertain_reason", "condition_source_locator"}
+            "uncertain_reason", "condition_source_locator"} | {
+    # v7 (PLAN #31 R1), TEMPORARY pending Carly (FIELDS.md question 21): pure classification labels
+    # the paper rarely writes word for word. Units (*_unit) still need a quote: they change the number.
+    "organism_group", "genotype_status", "condition_phase",
+    "group_type",  # v10 (PLAN #37): a label the AI makes up ("bioanode", "light series 54"); FIELDS.md question 21
+    "salinity_basis", "inoculum_basis", "nitrogen_concentration_basis", "light_measurement_basis",
+    "co2_basis", "electrode_area_basis", "biomass_loading_basis", "normalization_basis"}
+# Takes no quote of its own: checked against the quote of value_original (PLAN #31 R1).
+QUOTE_FROM = {"value_numeric": "value_original"}
 
 
 FieldType = Literal["text", "choice", "decimal", "integer", "datetime", "date", "bool"]
@@ -596,6 +609,9 @@ class FieldValue(BaseModel):
 
 class RecordContent(BaseModel):
     fields: dict[str, FieldValue]
+    # Required fields the AI looked for but the paper does not give (prompt v7). An empty required
+    # field listed here is a warning ("the paper does not say"); one not listed stays an error.
+    not_stated: list[str] = []
 
     @classmethod
     def empty(cls, level: str) -> "RecordContent":

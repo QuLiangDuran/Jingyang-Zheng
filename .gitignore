@@ -15,3 +15,6 @@ docs/FIELDS.md
 
 # Reading rules from the team: keep local, never publish
 docs/extraction_rules_prompt.txt
+
+# Paper PDFs and their converted text: keep local
+papers/

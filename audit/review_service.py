@@ -10,7 +10,8 @@ import json
 import re
 import sqlite3
 
-from .checks import check_record, flag, record_key
+from .checks import check_record, flag, is_graph_value, record_key
+from .recall import coverage, observation_quotes
 from .db import now
 from .fields import (FIELDS_BY_NAME, LEVEL_LABELS, FieldValue, RecordContent, ai_fields, choice_ok,
                      is_electrical)
@@ -212,6 +213,26 @@ def _observation_key(doc: DocView, r: sqlite3.Row) -> tuple | None:
     return cond, metric, value, _key(c.get("unit_original")), time
 
 
+def _series_without_x(doc: DocView, live: list[sqlite3.Row]) -> dict[int, int]:
+    """v9 #3: figure values with the same condition, metric, unit and time but different values are
+    points of a series whose x value (light intensity, concentration, ...) was not recorded.
+    Returns observation id -> number of distinct values in its group."""
+    groups: dict[tuple, dict[int, object]] = {}
+    for r in live:
+        if r["kind"] != "observation" or not is_graph_value("observation", doc.content[r["id"]]):
+            continue
+        k = _observation_key(doc, r)
+        if k:
+            cond, metric, value, unit, time = k
+            groups.setdefault((cond, metric, unit, time), {})[r["id"]] = value
+    out: dict[int, int] = {}
+    for members in groups.values():
+        n = len(set(members.values()))
+        if n > 1:
+            out.update({i: n for i in members})
+    return out
+
+
 def _missing_vs_sibling(doc: DocView, live: list[sqlite3.Row], rid: dict) -> dict[int, list[dict]]:
     """Warn when another condition of the same experiment has a field that this one leaves empty."""
     by_exp: dict[str, list[sqlite3.Row]] = {}
@@ -251,8 +272,15 @@ def refresh_document(conn: sqlite3.Connection, document_id: int) -> None:
             if k:
                 same_result.setdefault(k, []).append(r["id"])
         else:
-            exact.setdefault((r["kind"], record_key(doc.content[r["id"]])), []).append(r["id"])
+            # v9 #7: two conditions that differ only in their condition_key are the same condition
+            ignore = ("condition_key",) if r["kind"] == "condition" else ()
+            exact.setdefault((r["kind"], record_key(doc.content[r["id"]], ignore)), []).append(r["id"])
     dup_ids = {i for ids in exact.values() if len(ids) > 1 for i in ids}
+    series = _series_without_x(doc, live)
+    # v10 #3: result sentences no observation quotes, reported on the paper record
+    _, uncovered = coverage(text, observation_quotes(doc.content[r["id"]] for r in live if r["kind"] == "observation"))
+    recall_flags = [flag("uncovered_result", "warning",
+                         f"结果句没有被任何观测值引用（可能漏提）：{text[a:b].strip()[:300]}") for a, b in uncovered]
     dup_obs = {i: ids for ids in same_result.values() if len(ids) > 1 for i in ids}
     rid = doc.ids(document_id)["records"]
     sibling_flags = _missing_vs_sibling(doc, live, rid)
@@ -267,6 +295,12 @@ def refresh_document(conn: sqlite3.Connection, document_id: int) -> None:
             flags.append(flag("duplicate_observation", "warning",
                               f"与 {others} 是同一结果（同条件、metric_code、数值、单位、时间）"))
         flags += sibling_flags.get(r["id"], [])
+        if r["kind"] == "source":
+            flags += recall_flags
+        if r["id"] in series:
+            flags.append(flag("series_without_x", "warning",
+                              f"同一条件下有 {series[r['id']]} 个从图上读的不同值（同一指标、同一时间），"
+                              "看不出各对应哪个自变量值；系列里每个点应各有一个条件", "condition_ref"))
         new = json.dumps(flags, ensure_ascii=False)
         parent = doc.parent[r["id"]]
         if new != r["flags_json"] or parent != r["parent_id"]:

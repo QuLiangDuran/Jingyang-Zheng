@@ -3,7 +3,9 @@
 Cross-record flags (links between levels, duplicates) are added by
 review_service.refresh_document, which calls check_record for every record.
 """
-from .fields import RecordContent, ai_fields, choice_ok, suggested_ok
+import re
+
+from .fields import QUOTE_FROM, RecordContent, ai_fields, choice_ok, suggested_ok
 from .textmatch import locate, normalize, numbers_in, numbers_in_value, parse_number
 
 
@@ -11,10 +13,22 @@ def flag(code: str, level: str, message: str, field: str | None = None) -> dict:
     return {"code": code, "level": level, "field": field, "message": message}
 
 
+# Value fields of an observation. When the value was read from a figure (PDF attached), its quote is
+# the caption or a sentence pointing at the figure, so the number is not expected in the quote.
+VALUE_FIELDS = {"value_original", "value_numeric", "value_min", "value_max", "uncertainty_value",
+                "uncertainty_lower", "uncertainty_upper"}
+GRAPH_METHODS = {"graph_estimated", "graph_only"}
+
+
+def is_graph_value(kind: str, content: RecordContent) -> bool:
+    return kind == "observation" and normalize(content.get("extraction_method") or "") in GRAPH_METHODS
+
+
 def check_record(kind: str, content: RecordContent, doc_text: str, electrical: bool = False) -> list[dict]:
     """`electrical`: whether this record belongs to electrical data. Essential fields in the
     Electrical setup group are only required for electrical records."""
     flags: list[dict] = []
+    graph = is_graph_value(kind, content)
     for spec in ai_fields(kind):
         fv = content.fields.get(spec.name)
         value = (fv.value or "").strip() if fv else ""
@@ -22,7 +36,14 @@ def check_record(kind: str, content: RecordContent, doc_text: str, electrical: b
 
         if not value:
             if spec.essential and (electrical or not spec.electrical_only):
-                flags.append(flag("missing_required", "error", f"必填字段 {spec.name} 为空", spec.name))
+                if kind == "condition" and spec.name == "organism_name_reported":  # v9 #1
+                    flags.append(flag("no_organism", "error", "条件没有物种名：多半是没有引用写了物种的模板"
+                                      "（条件可以同时引用多个模板）", spec.name))
+                elif spec.name in content.not_stated:  # the AI looked: the paper does not say
+                    flags.append(flag("not_stated", "warning",
+                                      f"必填字段 {spec.name}：AI 判断原文未写，导出为 {spec.missing or '空'}", spec.name))
+                else:
+                    flags.append(flag("missing_required", "error", f"必填字段 {spec.name} 为空", spec.name))
             continue
         if spec.filled_by == "link":
             continue
@@ -43,17 +64,32 @@ def check_record(kind: str, content: RecordContent, doc_text: str, electrical: b
         if spec.name == "evidence_excerpt" and locate(doc_text, value) is None:
             flags.append(flag("quote_not_found", "warning", "evidence_excerpt 在原文中找不到", spec.name))
 
+        borrowed = not quote and spec.name in QUOTE_FROM  # its source field's quote is checked there
+        if borrowed:
+            src = content.fields.get(QUOTE_FROM[spec.name])
+            quote = (src.quote or "").strip() if src else ""
         if not quote:
             if spec.needs_quote:
                 flags.append(flag("quote_missing", "error", f"{spec.name} 没有原文引文", spec.name))
             continue
-        if locate(doc_text, quote) is None:
+        if not borrowed and locate(doc_text, quote) is None:
             flags.append(flag("quote_not_found", "error", f"{spec.name} 的引文在原文中找不到", spec.name))
+        if graph and spec.name in VALUE_FIELDS:
+            continue
         if spec.needs_quote and spec.name != "value_original" and not _value_in_quote(value, quote, spec.type, spec.verbatim):
             flags.append(flag("value_not_in_quote", "warning", f"{spec.name} 的值没有出现在引文中", spec.name))
 
     if kind == "observation":
-        flags += _value_numeric_consistency(content)
+        flags += _value_numeric_consistency(content, graph)
+    if graph:
+        loc = content.get("source_locator") or ""
+        if content.get("value_original") or content.get("value_numeric"):
+            flags.append(flag("graph_value", "warning",
+                              f"数值是从图中读出的（{content.get('extraction_method')}），请对照 "
+                              f"{loc or '图'} 核对", "value_original"))
+        if not re.search(r"fig", loc, re.I):
+            flags.append(flag("graph_locator_missing", "error",
+                              "图中读取的值必须在 source_locator 写明图号（如 Figure 3a）", "source_locator"))
     if kind == "condition" and normalize(content.get("potential_applied") or "") == "yes" \
             and not content.get("applied_potential_value"):
         flags.append(flag("applied_potential_missing", "warning",
@@ -67,7 +103,7 @@ def check_record(kind: str, content: RecordContent, doc_text: str, electrical: b
     return flags
 
 
-def _value_numeric_consistency(content: RecordContent) -> list[dict]:
+def _value_numeric_consistency(content: RecordContent, graph: bool = False) -> list[dict]:
     """value_numeric must be one of the numbers in value_original, and value_original must be
     word-for-word in its own quote. Both are errors: the numeric column is what gets analysed."""
     out = []
@@ -78,7 +114,7 @@ def _value_numeric_consistency(content: RecordContent) -> list[dict]:
         if n is not None and not _num_in(n, numbers_in_value(orig)):
             out.append(flag("value_numeric_mismatch", "error",
                             f"value_numeric {num_s} 不在 value_original「{orig}」里", "value_numeric"))
-    if orig and orig_fv and orig_fv.quote and normalize(orig) not in normalize(orig_fv.quote):
+    if not graph and orig and orig_fv and orig_fv.quote and normalize(orig) not in normalize(orig_fv.quote):
         out.append(flag("value_numeric_mismatch", "error",
                         f"value_original「{orig}」没有原样出现在它的引文里", "value_original"))
     return out
@@ -100,5 +136,6 @@ def _value_in_quote(value: str, quote: str, ftype: str, verbatim: bool) -> bool:
     return all(_num_in(n, quote_nums) for n in numbers_in(value))
 
 
-def record_key(content: RecordContent) -> tuple:
-    return tuple(sorted((n, normalize(fv.value or "")) for n, fv in content.fields.items()))
+def record_key(content: RecordContent, ignore: tuple = ()) -> tuple:
+    return tuple(sorted((n, normalize(fv.value or "")) for n, fv in content.fields.items()
+                        if n not in ignore and (fv.value or "").strip()))

@@ -33,7 +33,8 @@ CREATE TABLE IF NOT EXISTS extraction_runs (
     raw_response   TEXT,
     status         TEXT NOT NULL CHECK (status IN ('ok', 'parse_error', 'llm_error')),
     error          TEXT,
-    created_at     TEXT NOT NULL
+    created_at     TEXT NOT NULL,
+    usage          TEXT  -- JSON: token counts per API call (continuations included)
 );
 
 CREATE TABLE IF NOT EXISTS records (
@@ -105,4 +106,7 @@ def connect(path: str | Path) -> sqlite3.Connection:
         raise RuntimeError(f"{path} 是旧版（示例字段）数据库，和三层结构不兼容。"
                            "请先把它改名备份，再重新运行。")
     conn.executescript(SCHEMA)
+    run_cols = {r[1] for r in conn.execute("PRAGMA table_info(extraction_runs)")}
+    if "usage" not in run_cols:  # databases created before token logging
+        conn.execute("ALTER TABLE extraction_runs ADD COLUMN usage TEXT")
     return conn
