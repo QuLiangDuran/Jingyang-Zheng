@@ -9,3 +9,6 @@ exports/
 
 # Project spreadsheet from collaborators: keep local, never publish
 docs/Microalgae_Data.xlsx
+
+# Field list derived from the collaborators spreadsheet: keep local, never publish
+docs/FIELDS.md
