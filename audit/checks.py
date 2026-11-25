@@ -81,6 +81,7 @@ def check_record(kind: str, content: RecordContent, doc_text: str, electrical: b
 
     if kind == "observation":
         flags += _value_numeric_consistency(content, graph)
+        flags += _metric_and_unit(content)
     if graph:
         loc = content.get("source_locator") or ""
         if content.get("value_original") or content.get("value_numeric"):
@@ -117,6 +118,35 @@ def _value_numeric_consistency(content: RecordContent, graph: bool = False) -> l
     if not graph and orig and orig_fv and orig_fv.quote and normalize(orig) not in normalize(orig_fv.quote):
         out.append(flag("value_numeric_mismatch", "error",
                         f"value_original「{orig}」没有原样出现在它的引文里", "value_original"))
+    return out
+
+
+# v11 (PLAN #38): the unit decides the metric. Density metrics need a unit per area; power and
+# current metrics must not have one.
+DENSITY_METRICS = {"power_density", "max_power_density", "current_density", "peak_current_density",
+                   "photocurrent_density"}
+PER_AREA_METRICS_NOT = {"power", "max_power", "power_output", "current", "short_circuit_current",
+                        "load_current", "photocurrent"}
+_PER_AREA = re.compile(r"/|per\s|(?:cm|mm|m)\s?(?:[−-]\s?[12²]|[2²])|m[−-]2", re.I)
+_POWER_ONLY = re.compile(r"^\s*[pnµμumk]?W\s*$")
+
+
+def _metric_and_unit(content: RecordContent) -> list[dict]:
+    out = []
+    metric = normalize(content.get("metric_code") or "")
+    if metric in ("other", "unspecified"):
+        out.append(flag("metric_other", "error", "metric_code 不能是 other / unspecified：请写一个具体的指标名",
+                        "metric_code"))
+    unit = content.get("unit_original") or ""
+    if metric and unit:
+        per_area = bool(_PER_AREA.search(unit))
+        if metric in DENSITY_METRICS and not per_area:
+            hint = "（功率单位只能对应 power / max_power）" if _POWER_ONLY.match(unit) else ""
+            out.append(flag("unit_metric_mismatch", "error",
+                            f"metric_code {metric} 是密度，单位「{unit}」却没有面积{hint}", "unit_original"))
+        elif metric in PER_AREA_METRICS_NOT and per_area:
+            out.append(flag("unit_metric_mismatch", "error",
+                            f"metric_code {metric} 不是密度，单位「{unit}」却带面积（应为 ..._density）", "unit_original"))
     return out
 
 

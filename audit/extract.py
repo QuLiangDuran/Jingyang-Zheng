@@ -20,7 +20,7 @@ from .fields import FIELDS_BY_NAME, QUOTE_FROM, SCHEMA_VERSION, TRAIT_TO_METRIC,
 from .llm import LLMClient
 from .review_service import refresh_document
 
-PROMPT_VERSION = "v10"  # v10: observations-only default quote, full trait coverage, verbatim organism (PLAN #37); v9: several templates per condition, default quotes, series/specific/reference/unit/duplicate rules (PLAN #36); v8: compact output (PLAN #33)
+PROMPT_VERSION = "v11"  # v11: figure points as seen, metric/unit rules, observations first, reference groups (PLAN #38); v10: v10: observations-only default quote, full trait coverage, verbatim organism (PLAN #37); v9: several templates per condition, default quotes, series/specific/reference/unit/duplicate rules (PLAN #36); v8: compact output (PLAN #33)
 
 # JSON key of each level in the AI response.
 LAYER_KEYS = {"source": "source", "condition": "conditions", "observation": "observations"}
@@ -35,8 +35,8 @@ def _field_line(f) -> str:
         bits.append("required for electrical data" if f.electrical_only else "required")
     if f.choices:
         bits.append("one of: " + " | ".join(f.choices + ["other", "unspecified"]))
-    if f.suggested:
-        bits.append("use one of: " + " | ".join(f.suggested + ["other"]))
+    if f.suggested:  # metric_code is never "other" (v11): a descriptive code is written instead
+        bits.append("use one of: " + " | ".join(f.suggested + ([] if f.name == "metric_code" else ["other"])))
     if f.filled_by == "link":
         bits.append("plain string label")
     elif f.name in QUOTE_FROM:
@@ -75,9 +75,10 @@ def response_example() -> dict:
     template = {k: v for k, v in cond.items() if k not in ("condition_key", "not_stated")}
     return {"quotes": {"q1": "...", "q2": "..."},
             "source": _example_item("source"),
+            "observations": [{"quote": "q1", **_example_item("observation"),
+                              "extraction_method": "...", "value_status": "..."}],
             "condition_templates": {"T1": template, "T2": {"condition_source_locator": "..."}},
-            "conditions": [{"condition_key": "...", "template": ["T1", "T2"], "not_stated": ["..."]}],
-            "observations": [{"quote": "q1", **_example_item("observation")}]}
+            "conditions": [{"condition_key": "...", "template": ["T1", "T2"], "not_stated": ["..."]}]}
 
 
 def empty_response() -> dict:
@@ -95,6 +96,10 @@ PDF and is the reference for every quote.
 - Every "quote" MUST still be copied verbatim from the Text, never retyped from the PDF pages.
 - Use the PDF pages for what the Text lacks: figures, and table layout that the Text lost.
 - A value stated in the Text: take it from the Text (extraction_method = text or table).
+- Figure points: record as many observations as points you can see in the panel; never add a point,
+  never fill in a point between others. For each point, read the x value against the axis as an
+  approximate value (e.g. "~3.8"), with the unit exactly as the axis writes it; never assume even spacing,
+  and never take the x values from a list in the Text unless the Text ties each value to its point.
 - A value shown ONLY in a figure: read it from the figure only if you can read it clearly against
   the axis. Then set extraction_method = graph_estimated, value_status = approximate, put the value
   you read in value_original and value_numeric, source_locator = the figure panel (e.g. "Figure 3a"),
@@ -213,7 +218,10 @@ Fields of each record:
   Examples of common traits and their metric_code (examples, NOT a limit): {trait_map}.
 - If no listed metric_code fits a measured trait, still extract it: write a short descriptive
   snake_case metric_code (e.g. nitrate_uptake_rate) and the closest trait_group; the system
-  flags it for the reviewer.
+  flags it for the reviewer. metric_code is never other or unspecified.
+- The unit decides the metric: a unit of power (W, mW, µW) is a power (power, max_power), a unit
+  per area (mW/m2, µA/cm2) is a density (power_density, max_power_density, current_density, ...).
+- Every observation states extraction_method and value_status, even when the value is plain text.
 - A relative difference (e.g. "10–30% higher than WT"): value_original is copied verbatim
   ("10–30%"), the comparison goes in comparison_description, and metric_code is NOT the absolute
   quantity (not photocurrent_density): write a descriptive code for the relative change.
@@ -248,6 +256,9 @@ Fields of each record:
 - Electrical results: system_type, and potential_applied = {_options("potential_applied")}
   (unknown = the paper does not say), plus applied_potential_value and applied_potential_unit if given.
 - group_type: which group or treatment the result belongs to (e.g. control vs. treated).
+- A reference group (e.g. "single µPSC", "bare electrode", "wild type") is its own condition: never
+  link its values to one specific numbered unit or strain of the tested groups.
+- A value that appears in the Text and in a table (or a figure) is ONE observation.
 - Do not carry device settings from one mode, setup or experiment to another (e.g. the electrode
   material of a biofilm setup to a suspension setup) unless the paper says the setting is shared.
   Otherwise leave it empty and list it in not_stated if it is required.
@@ -263,7 +274,8 @@ paper_verdict: {_options("paper_verdict")}.
 === OUTPUT ===
 - If there are no records, return {json.dumps(empty_response())}.
 - Respond with JSON only: no commentary, no explanations, no plan, no reasoning in the output.
-  Write "quotes" first, then "source", "condition_templates", "conditions", "observations".
+  Write "quotes" first, then "source", then the observations, then "condition_templates" and
+  "conditions". Write the observations first, then only the conditions they link to.
   Shape (only a few fields are shown; use the field names listed above as keys):
 {json.dumps(response_example(), ensure_ascii=False)}""" + (PDF_RULES if with_pdf else "") + (
         PAGE_IMAGES_RULES if with_pdf and pdf_mode == "images" else "")
@@ -330,6 +342,9 @@ def _to_content(level: str, obj, where: str, dropped: list[str]) -> RecordConten
     names = {f.name for f in ai_fields(level)}
     content = RecordContent.empty(level)
     for k, fv in obj.items():
+        if k == "_from_template":
+            content.from_template = {n: t for n, t in (fv or {}).items() if n in names}
+            continue
         if k == "not_stated":
             items = fv if isinstance(fv, list) else [fv]
             for n in items:
@@ -428,19 +443,25 @@ def expand_compact(data: dict, dropped: list[str]) -> dict:
             return obj
         names = obj.get("template")
         names = [names] if isinstance(names, str) else [n for n in (names or []) if isinstance(n, str)]
-        merged, ns = {}, []
+        merged, ns, origin = {}, [], {}
         for name in names:  # v9: several templates, merged in order (a later one wins)
             t = templates.get(name)
             if not isinstance(t, dict):
                 dropped.append(f"{where}.template (unknown template {name})")
                 continue
             merged = item({k: v for k, v in t.items() if k != "not_stated"}, f"condition_templates.{name}", merged)
+            origin.update({k: name for k, v in t.items() if k not in ("not_stated", "quote") and v is not None})
             ns += [n for n in (t.get("not_stated") or []) if n not in ns]
-        merged = item({k: v for k, v in obj.items() if k not in ("template", "not_stated")}, where, merged)
+        own = {k: v for k, v in obj.items() if k not in ("template", "not_stated")}
+        merged = item(own, where, merged)
+        origin = {k: t for k, t in origin.items() if k not in own}  # v11: a field the condition sets is its own
         ns += [n for n in (obj.get("not_stated") or []) if n not in ns]
         merged = {k: v for k, v in merged.items() if v is not None}
         if ns:
             merged["not_stated"] = ns
+        origin = {k: t for k, t in origin.items() if k in merged}
+        if origin:
+            merged["_from_template"] = origin
         return merged
 
     out = dict(data)

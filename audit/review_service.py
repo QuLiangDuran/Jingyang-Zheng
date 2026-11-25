@@ -233,6 +233,75 @@ def _series_without_x(doc: DocView, live: list[sqlite3.Row]) -> dict[int, int]:
     return out
 
 
+QUOTE_CODES = ("quote_missing", "quote_not_found", "value_not_in_quote")
+
+
+def _once_per_template_field(doc: DocView, computed: dict[int, list[dict]], rid: dict) -> None:
+    """v11 #5: a quote problem of a field copied from a condition template is one problem. Keep it on
+    the first condition that has it (with a count of the others) and drop the copies. After a
+    reviewer fixes it there, the field is that condition's own and the next copy is reported."""
+    groups: dict[tuple, list[int]] = {}
+    for r in doc.rows:
+        if r["kind"] != "condition":
+            continue
+        c = doc.content[r["id"]]
+        for f in computed[r["id"]]:
+            t = c.from_template.get(f["field"] or "")
+            if t and f["code"] in QUOTE_CODES:
+                fv = c.fields.get(f["field"])
+                key = (t, f["field"], f["code"], normalize(fv.value or "") if fv else "")
+                groups.setdefault(key, []).append(r["id"])
+    for (t, field, code, _), ids in groups.items():
+        if len(ids) < 2:
+            continue
+        first, rest = ids[0], set(ids[1:])
+        for f in computed[first]:
+            if f["field"] == field and f["code"] == code:
+                f["message"] += (f"（模板 {t} 的字段，另有 {len(rest)} 个条件同样如此，只在这里报一次：" +
+                                 ", ".join(rid[i]["system_id"] for i in ids[1:6]) + ("…" if len(rest) > 5 else "") + "）")
+        for i in rest:
+            computed[i] = [f for f in computed[i] if not (f["field"] == field and f["code"] == code)]
+
+
+def _suspected_fabricated_series(doc: DocView, live: list[sqlite3.Row]) -> dict[int, str]:
+    """v11 #2: figure values whose x values (the setting that varies between their conditions) form a
+    perfect arithmetic sequence AND that have three or more identical y values in a row -- the
+    pattern of points filled in by assumption rather than read from the figure."""
+    groups: dict[tuple, list[int]] = {}
+    for r in live:
+        c = doc.content[r["id"]]
+        if r["kind"] == "observation" and is_graph_value("observation", c) and doc.parent[r["id"]]:
+            key = (_key(c.get("source_locator")), _key(c.get("metric_code")), _key(c.get("unit_original")))
+            groups.setdefault(key, []).append(r["id"])
+    out: dict[int, str] = {}
+    for ids in groups.values():
+        if len(ids) < 4:
+            continue
+        conds = [doc.content[doc.parent[i]] for i in ids]
+        ys = [parse_number(doc.content[i].get("value_numeric") or doc.content[i].get("value_original") or "") for i in ids]
+        if any(y is None for y in ys):
+            continue
+        for spec in ai_fields("condition"):
+            if spec.type not in ("decimal", "integer"):
+                continue
+            xs = [parse_number(c.get(spec.name) or "") for c in conds]
+            if any(x is None for x in xs) or len(set(xs)) != len(xs):
+                continue
+            pts = sorted(zip(xs, ys))
+            steps = [b[0] - a[0] for a, b in zip(pts, pts[1:])]
+            even = all(abs(d - steps[0]) <= 1e-9 * max(1.0, abs(steps[0])) for d in steps)
+            run = best = 1
+            for a, b in zip(pts, pts[1:]):
+                run = run + 1 if a[1] == b[1] else 1
+                best = max(best, run)
+            if even and best >= 3:
+                msg = (f"疑似补出来的系列：{spec.name} 是等差数列（步长 {steps[0]:g}），且有 {best} 个连续相同的 y 值；"
+                       "请对照原图核对点数和横坐标")
+                out.update({i: msg for i in ids})
+                break
+    return out
+
+
 def _missing_vs_sibling(doc: DocView, live: list[sqlite3.Row], rid: dict) -> dict[int, list[dict]]:
     """Warn when another condition of the same experiment has a field that this one leaves empty."""
     by_exp: dict[str, list[sqlite3.Row]] = {}
@@ -284,7 +353,10 @@ def refresh_document(conn: sqlite3.Connection, document_id: int) -> None:
     dup_obs = {i: ids for ids in same_result.values() if len(ids) > 1 for i in ids}
     rid = doc.ids(document_id)["records"]
     sibling_flags = _missing_vs_sibling(doc, live, rid)
+    fabricated = _suspected_fabricated_series(doc, live)
+    linked = {doc.parent[r["id"]] for r in live if r["kind"] == "observation"}
 
+    computed: dict[int, list[dict]] = {}
     for r in doc.rows:
         flags = check_record(r["kind"], doc.content[r["id"]], text, doc.electrical[r["id"]])
         flags += doc.link_flags[r["id"]]
@@ -301,6 +373,16 @@ def refresh_document(conn: sqlite3.Connection, document_id: int) -> None:
             flags.append(flag("series_without_x", "warning",
                               f"同一条件下有 {series[r['id']]} 个从图上读的不同值（同一指标、同一时间），"
                               "看不出各对应哪个自变量值；系列里每个点应各有一个条件", "condition_ref"))
+        if r["id"] in fabricated:
+            flags.append(flag("suspected_fabricated_series", "warning", fabricated[r["id"]], "value_original"))
+        if r["kind"] == "condition" and r["status"] != "rejected" and r["id"] not in linked:
+            flags.append(flag("condition_without_observation", "warning",
+                              "没有任何观测值挂在这个条件下（条件只应为有结果的情况建立）"))
+        computed[r["id"]] = flags
+
+    _once_per_template_field(doc, computed, rid)
+    for r in doc.rows:
+        flags = computed[r["id"]]
         new = json.dumps(flags, ensure_ascii=False)
         parent = doc.parent[r["id"]]
         if new != r["flags_json"] or parent != r["parent_id"]:
@@ -473,6 +555,7 @@ def edit_field(conn: sqlite3.Connection, record_id: int, reviewer: str, field: s
         if value and value.strip() and spec.type == "choice" and not choice_ok(spec, value):
             raise Invalid(f"{field} 只能填这些值：{', '.join(spec.choices or [])}, other, unspecified")
         content = RecordContent.model_validate_json(r["current_json"])
+        content.from_template.pop(field, None)  # v11: edited -> the condition's own field
         fv = content.fields.setdefault(field, FieldValue())
         changes = []
         for attr, new in (("value", value), ("quote", quote)):

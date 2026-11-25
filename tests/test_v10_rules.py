@@ -29,7 +29,7 @@ def test_v10_4_group_type_is_a_label_without_quote_but_analyte_keeps_its_quote()
 
 
 def test_v10_prompt():
-    assert extract.PROMPT_VERSION == "v10"
+    assert extract.PROMPT_VERSION in ("v10", "v11")
     prompt = extract.build_system_prompt()
     for text in (
         "every measured trait stated in the Text",              # 1

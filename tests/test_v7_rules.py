@@ -71,7 +71,7 @@ def test_r2_not_stated_is_ignored_when_the_field_has_a_value():
 # ---------- prompt v7 ----------
 
 def test_prompt_v7_rules():
-    assert extract.PROMPT_VERSION in ("v7", "v8", "v9", "v10")  # later versions keep every v7 rule
+    assert extract.PROMPT_VERSION in ("v7", "v8", "v9", "v10", "v11")  # later versions keep every v7 rule
     prompt = extract.build_system_prompt()
     for text in (
         '"not_stated"',                                       # R2: list of required fields the paper does not give

@@ -101,7 +101,7 @@ def test_v9_3_one_graph_value_per_condition_is_fine(conn):
 # ---------- prompt v9 ----------
 
 def test_prompt_v9_rules():
-    assert extract.PROMPT_VERSION in ("v9", "v10")
+    assert extract.PROMPT_VERSION in ("v9", "v10", "v11")
     prompt = extract.build_system_prompt()
     for text in (
         '"template": ["T1", "T2"]',                        # 1

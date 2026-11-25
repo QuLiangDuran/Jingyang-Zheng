@@ -106,6 +106,9 @@ ELECTRICAL_METRIC_CODES = {
     "power_density", "max_power_density", "current_density", "peak_current_density", "current",
     "open_circuit_voltage", "voltage", "power_output", "internal_resistance", "coulombic_efficiency",
     "polarization_curve", "photocurrent", "photocurrent_density",
+    # v11 (PLAN #38), names used in the manual sheet (Yuntian) -- TEMPORARY, pending Carly
+    "short_circuit_current", "load_voltage", "load_current", "power", "max_power",
+    "photocurrent_retention", "internal_quantum_efficiency",
 }
 TEMP_METRIC_CODES = [
     # growth
@@ -118,9 +121,9 @@ TEMP_METRIC_CODES = [
     # photosynthesis
     "fv_fm", "oxygen_evolution_rate", "photosynthetic_rate", "respiration_rate",
     # morphology
-    "cell_size", "cell_shape",
+    "cell_size", "cell_shape", "chloroplast_count",                 # chloroplast_count: v11, pending Carly
     # stress tolerance
-    "survival_rate", "cell_viability",
+    "survival_rate", "cell_viability", "detached_cell_fraction",    # detached_cell_fraction: v11, pending Carly
     # bioelectrical
     *sorted(ELECTRICAL_METRIC_CODES),
 ]
@@ -612,6 +615,9 @@ class RecordContent(BaseModel):
     # Required fields the AI looked for but the paper does not give (prompt v7). An empty required
     # field listed here is a warning ("the paper does not say"); one not listed stays an error.
     not_stated: list[str] = []
+    # v11: fields copied from a condition template -> template name (a missing quote there is one
+    # problem, reported once per document, not once per condition). Dropped when a reviewer edits it.
+    from_template: dict[str, str] = {}
 
     @classmethod
     def empty(cls, level: str) -> "RecordContent":

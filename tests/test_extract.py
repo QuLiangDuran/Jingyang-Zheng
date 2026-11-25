@@ -21,7 +21,7 @@ def _flags(conn, rid):
 
 def test_prompt_example_is_generated_from_fields_and_version_bumped():
     ex = extract.response_example()
-    assert list(ex) == ["quotes", "source", "condition_templates", "conditions", "observations"]  # v8 compact
+    assert list(ex) == ["quotes", "source", "observations", "condition_templates", "conditions"]  # v8 compact; v11 observations first
     assert ex["quotes"] == {"q1": "...", "q2": "..."}
     for item, level in ((ex["source"], "source"), (ex["condition_templates"]["T1"], "condition"),
                         (ex["observations"][0], "observation")):
@@ -29,6 +29,8 @@ def test_prompt_example_is_generated_from_fields_and_version_bumped():
         names = [f.name for f in ai_fields(level)]
         item.pop("not_stated", None)
         item.pop("quote", None)                                              # v9 default quote of a template
+        if level == "observation":                                           # v11: always shown on observations
+            item.pop("extraction_method", None), item.pop("value_status", None)
         assert 2 <= len(item) <= 5 and set(item) <= set(names)              # short example, real field names
         assert list(item) == [n for n in names if n in item]                # in field-list order
     assert ex["conditions"][0] == {"condition_key": "...", "template": ["T1", "T2"], "not_stated": ["..."]}  # v9
@@ -40,7 +42,7 @@ def test_prompt_example_is_generated_from_fields_and_version_bumped():
     for f in ai_fields("condition") + ai_fields("observation") + ai_fields("source"):
         assert f'- "{f.name}" (' in prompt                                   # every AI field is described
     assert "use one of: growth |" in prompt and "dry_biomass" in prompt        # temporary trait / metric lists
-    assert extract.PROMPT_VERSION == "v10"
+    assert extract.PROMPT_VERSION == "v11"
 
 
 def test_merged_rules_use_fields_py_names_and_decisions():
@@ -82,7 +84,7 @@ def test_prompt_leaves_out_fields_the_ai_does_not_fill():
     for name in ("study_id", "condition_id", "observation_id", "review_status", "reviewer_id",
                  "accepted_taxon_name", "availability_status", "supplier_url", "is_electrical"):
         assert f'"{name}"' not in prompt
-    assert len(prompt) < 32_000  # v9 (30,929) several templates, default quotes, series rules; v8 (29,306) adds the compact format and the Yuntian rules; v2 26,360; v3 20,059; v4 adds the merged rules; v5 (26,068) the selection/scope split; v7 (27,628) not_stated + quote/mode/relative rules. Guards against growth.
+    assert len(prompt) < 33_500  # v11 (32,305) figure points, metric/unit, reference groups; v9 (30,929) several templates, default quotes, series rules; v8 (29,306) adds the compact format and the Yuntian rules; v2 26,360; v3 20,059; v4 adds the merged rules; v5 (26,068) the selection/scope split; v7 (27,628) not_stated + quote/mode/relative rules. Guards against growth.
 
 
 # ---------- parse_response ----------
