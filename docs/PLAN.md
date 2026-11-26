@@ -44,6 +44,7 @@
 | 36 | 按 VIC（v8，qwen3.8-flash）的核对结果改 `PROMPT_VERSION = v9`，见下表 | `extract.py`、`checks.py`、`review_service.py`、`tests/test_v9_rules.py` | 完成 |
 | 37 | 按 VIC v9 的核对结果改 `PROMPT_VERSION = v10`，新增不依赖模型的召回检查（`recall.py`、`run.py recall`），修 ACS 页眉混进正文，见下表 | `extract.py`、`fields.py`、`recall.py`、`review_service.py`、`documents.py`、`cli.py`、`run.py`、`tests/test_v10_rules.py`、`tests/test_recall.py`、`tests/test_pdf.py` | 完成 |
 | 38 | 按 VIC v10、KUR v10 的结果改 `PROMPT_VERSION = v11`，见下表 | `extract.py`、`fields.py`、`checks.py`、`review_service.py`、`tests/test_v11_rules.py` | 完成 |
+| 39 | 网页导入和导出：“导入论文”上传 PDF / TXT，只在本机转换文字并建文档（`web_import.py`，存到 `papers/`，同名不同内容加 -2，内容相同复用），不调用 API；文档面板上手动点“开始提取”才调用模型，后台线程运行（先读图自检），同一时间一篇，页面轮询 `/api/jobs/current` 显示进度；导出加范围（已确认 / 全部含未审核、不含已拒绝）和当前文档筛选，新增 `condition_review_status`、`source_review_status` 两列；依赖加 `python-multipart` | `web_import.py`、`api.py`、`export.py`、`review_service.py`、`static/`、`tests/test_web_import_export.py` | 完成 |
 
 ### v7 修改与对应问题（2025_YUAN，文档 3）
 

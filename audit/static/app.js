@@ -7,7 +7,8 @@ const ACTION = { approve: "确认", edit: "修改", reject: "拒绝", reopen: "�
 const KIND = { source: "论文", condition: "条件", observation: "观测值" };
 const OPEN = ["pending", "needs_resolution"];
 
-const state = { meta: null, records: [], currentId: null, record: null, docCache: {}, editing: null, showEmpty: false, pinned: null };
+const state = { meta: null, records: [], currentId: null, record: null, docCache: {}, editing: null, showEmpty: false, pinned: null,
+                docs: [], job: null };
 
 // ---------- api ----------
 async function api(path, body) {
@@ -43,11 +44,128 @@ async function act(fn) {
 // ---------- list ----------
 async function loadDocs() {
   const docs = await api("/api/documents");
+  state.docs = docs;
   const sel = $("#f-doc");
   const keep = sel.value;
   sel.innerHTML = '<option value="">全部文档</option>' +
-    docs.map((d) => `<option value="${d.id}">${esc(d.title)}（待审 ${d.pending}/${d.total}）</option>`).join("");
+    docs.map((d) => `<option value="${d.id}">${esc(d.title)}（${d.runs ? `待审 ${d.pending}/${d.total}` : "未提取"}）</option>`).join("");
   sel.value = keep;
+  renderDocPanel();
+}
+
+// ---------- document panel: extraction state, start extraction ----------
+function currentDoc() {
+  const id = Number($("#f-doc").value);
+  return id ? state.docs.find((d) => d.id === id) : null;
+}
+
+function renderDocPanel() {
+  const d = currentDoc();
+  const box = $("#doc-panel");
+  const job = state.job;
+  if (!d) {
+    box.hidden = !(job && job.status === "running");
+    box.innerHTML = job && job.status === "running" ? `<div class="job running">正在提取「${esc(job.title)}」：${esc(job.step)}…</div>` : "";
+    return;
+  }
+  const running = job && job.status === "running";
+  const mine = job && job.document_id === d.id;
+  const state_ = d.runs ? `已提取 ${d.runs} 次（最近一次：${d.last_run_status === "ok" ? "成功" : d.last_run_status}），${d.total} 条记录`
+                        : "还没有提取（原文已转换好，可在中间检查）";
+  box.hidden = false;
+  box.innerHTML = `
+    <div class="title">${esc(d.title)}</div>
+    <div class="muted">${d.chars.toLocaleString()} 字符 · ${d.has_pdf ? "PDF" : "文字"} · ${state_}</div>
+    <div class="row">
+      <button id="btn-extract" class="${d.runs ? "" : "primary"}" ${running ? "disabled" : ""}>${d.runs ? "重新提取" : "开始提取"}</button>
+      <button id="btn-show-text">查看原文</button>
+    </div>
+    ${mine ? `<div class="job ${job.status === "running" ? "running" : job.status === "error" ? "error" : ""}">${
+      job.status === "running" ? `提取中：${esc(job.step)}…` : esc(job.message)}</div>`
+      : running ? `<div class="job running">正在提取「${esc(job.title)}」，请等它结束</div>` : ""}`;
+}
+
+async function showDocText(docId) {
+  if (!state.docCache[docId]) state.docCache[docId] = await api(`/api/documents/${docId}`);
+  const doc = state.docCache[docId];
+  state.record = null;
+  state.currentId = null;
+  renderList();
+  $("#doc-title").textContent = "· " + doc.title;
+  const box = $("#source-text");
+  box.classList.remove("muted");
+  box.textContent = doc.text;
+  box.scrollTop = 0;
+  $("#detail-body").classList.add("muted");
+  $("#detail-body").textContent = "未选择";
+}
+
+async function startExtract() {
+  const d = currentDoc();
+  if (!d) return;
+  const again = d.runs ? `\n\n这篇已经提取过 ${d.runs} 次，再提取会新增一批记录（旧记录保留）。` : "";
+  if (!confirm(`将调用 API 提取「${d.title}」，会产生费用，约需 1–3 分钟。${again}\n\n确定开始？`)) return;
+  state.job = await api(`/api/documents/${d.id}/extract`, {});
+  renderDocPanel();
+  pollJob();
+}
+
+async function pollJob() {
+  clearTimeout(pollJob._t);
+  const job = await api("/api/jobs/current");
+  const was = state.job && state.job.status;
+  state.job = job;
+  renderDocPanel();
+  if (job && job.status === "running") {
+    pollJob._t = setTimeout(() => act(pollJob), 3000);
+  } else if (job && was === "running") {
+    toast(`「${job.title}」${job.status === "error" ? "提取失败：" : ""}${job.message}`, job.status === "error" || (job.summary && job.summary.failed_runs > 0));
+    delete state.docCache[job.document_id];
+    await Promise.all([loadDocs(), loadList(false)]);
+  }
+}
+
+// ---------- import ----------
+function openImport() {
+  $("#import-form").reset();
+  $("#i-result").innerHTML = "";
+  $("#i-go").disabled = false;
+  $("#import-dlg").showModal();
+}
+
+async function doImport(ev) {
+  ev.preventDefault();
+  const f = $("#i-file").files[0];
+  if (!f) throw new Error("请选择文件");
+  const fd = new FormData();
+  fd.append("file", f);
+  if ($("#i-title").value.trim()) fd.append("title", $("#i-title").value.trim());
+  $("#i-go").disabled = true;
+  $("#i-result").textContent = "正在上传并在本机转换文字…";
+  try {
+    const res = await fetch("/api/documents/upload", { method: "POST", body: fd });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : `HTTP ${res.status}`);
+    $("#i-result").innerHTML = `
+      <p>已导入「${esc(data.title)}」（文档 #${data.id}）：${data.pages ? `${data.pages} 页，` : ""}${data.chars.toLocaleString()} 字符，
+      保存为 papers/${esc(data.file)}。还没有调用 API。</p>
+      <pre>${esc(data.preview)}${data.chars > data.preview.length ? "\n…" : ""}</pre>
+      <p>关闭后左侧会选中这篇，检查原文无误再点“开始提取”。</p>`;
+    await loadDocs();
+    $("#f-doc").value = String(data.id);
+    renderDocPanel();
+    await loadList(false);
+    await showDocText(data.id);
+  } finally {
+    $("#i-go").disabled = false;
+  }
+}
+
+// ---------- export ----------
+function exportFile(ext) {
+  const q = new URLSearchParams({ scope: $("#x-scope").value });
+  if ($("#f-doc").value) q.set("document_id", $("#f-doc").value);
+  window.location.href = `/api/export.${ext}?${q}`;
 }
 
 async function loadList(keepSelection = true) {
@@ -342,7 +460,27 @@ $("#list").addEventListener("click", (ev) => {
   if (li) act(() => select(Number(li.dataset.id)));
 });
 
-["#f-doc", "#f-kind", "#f-status", "#f-flag"].forEach((s) => $(s).addEventListener("change", () => act(() => loadList(false))));
+["#f-kind", "#f-status", "#f-flag"].forEach((s) => $(s).addEventListener("change", () => act(() => loadList(false))));
+$("#f-doc").addEventListener("change", () => act(async () => {
+  renderDocPanel();
+  await loadList(false);
+  const d = currentDoc();
+  if (d && !state.records.length) await showDocText(d.id);   // nothing to review yet: show the converted text
+}));
+
+$("#btn-import").addEventListener("click", openImport);
+$("#i-close").addEventListener("click", () => $("#import-dlg").close());
+$("#import-form").addEventListener("submit", (ev) => act(() => doImport(ev)));
+$("#i-file").addEventListener("change", () => {
+  const f = $("#i-file").files[0];
+  if (f && !$("#i-title").value.trim()) $("#i-title").value = f.name.replace(/\.[^.]+$/, "");
+});
+$("#doc-panel").addEventListener("click", (ev) => act(async () => {
+  if (ev.target.id === "btn-extract") await startExtract();
+  if (ev.target.id === "btn-show-text") await showDocText(currentDoc().id);
+}));
+$("#btn-xlsx").addEventListener("click", () => exportFile("xlsx"));
+$("#btn-csv").addEventListener("click", () => exportFile("csv"));
 
 $("#reviewer").addEventListener("input", () => {
   try { localStorage.setItem("reviewer", $("#reviewer").value); } catch {}
@@ -354,4 +492,7 @@ act(async () => {
   state.meta = await api("/api/meta");
   await loadDocs();
   await loadList(false);
+  state.job = await api("/api/jobs/current");    // an extraction started before a reload
+  if (state.job && state.job.status === "running") pollJob();
+  renderDocPanel();
 });

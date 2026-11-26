@@ -103,3 +103,18 @@ details.group > summary { cursor: pointer; font-weight: 600; font-size: 13px; pa
 details.group > summary .muted { font-weight: normal; }
 .field .label { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
 .toolbar { display: flex; gap: 8px; align-items: center; font-size: 12px; margin-bottom: 6px; }
+
+/* import / extraction / export */
+.export-scope select { margin-left: 6px; }
+#doc-panel { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; font-size: 13px; }
+#doc-panel .title { font-weight: 600; word-break: break-all; }
+#doc-panel .row { display: flex; gap: 6px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
+#doc-panel .job { margin-top: 6px; }
+#doc-panel .job.running { color: var(--accent); }
+#doc-panel .job.error { color: var(--bad); }
+#import-dlg { border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; width: min(560px, 92vw); }
+#import-dlg::backdrop { background: rgba(0, 0, 0, .25); }
+#import-dlg h3 { margin: 0 0 6px; }
+#import-dlg label { display: flex; flex-direction: column; gap: 4px; margin: 10px 0; }
+#import-dlg .row { display: flex; gap: 8px; margin-top: 8px; }
+#i-result pre { white-space: pre-wrap; max-height: 220px; overflow: auto; background: var(--bg); padding: 8px; border-radius: 6px; }

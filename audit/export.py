@@ -1,7 +1,9 @@
-"""Export approved observations as one flat row each, in Extraction Template column order.
+"""Export observations as one flat row each, in Extraction Template column order.
 
-A row = observation + its condition + its paper (source). It is exported only when
-all three records are approved. Empty cells are filled with "Missing" / "N/A"
+A row = observation + its condition + its paper (source). scope="approved" (default): exported only
+when all three records are approved. scope="all": every observation whose three records are not
+rejected, reviewed or not (review_status, condition_review_status, source_review_status say which);
+for looking at the AI's results next to a manual sheet before review. Empty cells are filled with "Missing" / "N/A"
 according to each field's missing policy; electrical fields on non-electrical
 rows are "N/A"; "later" fields stay blank.
 """
@@ -13,7 +15,8 @@ from .fields import EXPORT_FIELDS, FIELDS, RecordContent
 from .review_service import DocView, reviewer_notes
 
 QUOTE_FIELDS = [f for f in FIELDS if f.filled_by == "ai" and f.needs_quote]
-EXTRA_COLUMNS = ["condition_source_locator", "observation_record_id", "condition_record_id", "source_record_id",
+SCOPES = ("approved", "all")
+EXTRA_COLUMNS = ["condition_review_status", "source_review_status", "condition_source_locator", "observation_record_id", "condition_record_id", "source_record_id",
                  "document", "edited", "model", "prompt_version", "schema_version"]
 SOURCE_SHEET_COLUMNS = ["source_record_id", "study_id", "source_id", "review_status", "doi", "article_title",
                         "first_author", "publication_year", "paper_type", "paper_verdict", "exclusion_reason",
@@ -34,7 +37,16 @@ def _fill(spec, value, electrical: bool):
     return spec.missing or None
 
 
-def _rows_for_document(conn: sqlite3.Connection, document_id: int, title: str) -> tuple[list[dict], list[dict]]:
+def _wanted(scope: str, *rows) -> bool:
+    if any(r is None for r in rows):
+        return False
+    if scope == "all":
+        return all(r["status"] != "rejected" for r in rows)
+    return all(r["status"] == "approved" for r in rows)
+
+
+def _rows_for_document(conn: sqlite3.Connection, document_id: int, title: str,
+                       scope: str = "approved") -> tuple[list[dict], list[dict]]:
     doc = DocView(conn, document_id)
     ids = doc.ids(document_id)
     rid = ids["records"]
@@ -45,7 +57,7 @@ def _rows_for_document(conn: sqlite3.Connection, document_id: int, title: str) -
     for o in doc.by_kind["observation"]:
         c = by_id.get(doc.parent[o["id"]])
         s = by_id.get(doc.parent[c["id"]]) if c else None
-        if not (o["status"] == "approved" and c and c["status"] == "approved" and s and s["status"] == "approved"):
+        if not _wanted(scope, o, c, s):
             continue
         exported_per_source[s["id"]] = exported_per_source.get(s["id"], 0) + 1
         content = {"source": doc.content[s["id"]], "condition": doc.content[c["id"]],
@@ -77,6 +89,7 @@ def _rows_for_document(conn: sqlite3.Connection, document_id: int, title: str) -
             row[f"{f.name}_quote"] = fv.quote if fv else None
         run = runs[o["run_id"]]
         row.update(
+            condition_review_status=c["status"], source_review_status=s["status"],
             condition_source_locator=content["condition"].get("condition_source_locator"),
             observation_record_id=o["id"], condition_record_id=c["id"], source_record_id=s["id"],
             document=title,
@@ -96,32 +109,38 @@ def _rows_for_document(conn: sqlite3.Connection, document_id: int, title: str) -
     return rows, sources
 
 
-def _collect(conn: sqlite3.Connection) -> tuple[list[dict], list[dict]]:
+def _collect(conn: sqlite3.Connection, scope: str = "approved",
+             document_id: int | None = None) -> tuple[list[dict], list[dict]]:
+    if scope not in SCOPES:
+        raise ValueError(f"scope must be one of {', '.join(SCOPES)}")
     rows, sources = [], []
-    for d in conn.execute("SELECT id, title FROM documents ORDER BY id").fetchall():
-        r, s = _rows_for_document(conn, d["id"], d["title"])
+    sql, args = "SELECT id, title FROM documents", ()
+    if document_id is not None:
+        sql, args = sql + " WHERE id=?", (document_id,)
+    for d in conn.execute(sql + " ORDER BY id", args).fetchall():
+        r, s = _rows_for_document(conn, d["id"], d["title"], scope)
         rows += r
         sources += s
     return rows, sources
 
 
-def export_rows(conn: sqlite3.Connection) -> list[dict]:
-    return _collect(conn)[0]
+def export_rows(conn: sqlite3.Connection, scope: str = "approved", document_id: int | None = None) -> list[dict]:
+    return _collect(conn, scope, document_id)[0]
 
 
-def to_csv_bytes(conn: sqlite3.Connection) -> bytes:
+def to_csv_bytes(conn: sqlite3.Connection, scope: str = "approved", document_id: int | None = None) -> bytes:
     buf = io.StringIO()
     w = csv.DictWriter(buf, fieldnames=export_columns())
     w.writeheader()
-    w.writerows(export_rows(conn))
+    w.writerows(export_rows(conn, scope, document_id))
     return buf.getvalue().encode("utf-8-sig")  # BOM so Excel reads non-ASCII (µ, °C, Chinese) correctly
 
 
-def to_xlsx_bytes(conn: sqlite3.Connection) -> bytes:
+def to_xlsx_bytes(conn: sqlite3.Connection, scope: str = "approved", document_id: int | None = None) -> bytes:
     from openpyxl import Workbook
     from openpyxl.styles import Font
 
-    rows, sources = _collect(conn)
+    rows, sources = _collect(conn, scope, document_id)
     wb = Workbook()
     for ws, cols, data in ((wb.active, export_columns(), rows), (wb.create_sheet(), SOURCE_SHEET_COLUMNS, sources)):
         ws.append(cols)

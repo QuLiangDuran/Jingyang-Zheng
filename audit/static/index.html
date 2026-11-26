@@ -12,9 +12,16 @@
   <label class="reviewer">审核人
     <input id="reviewer" placeholder="填写你的名字" autocomplete="name">
   </label>
+  <button id="btn-import">导入论文</button>
   <span class="spacer"></span>
-  <a class="btn" href="/api/export.xlsx">导出 Excel</a>
-  <a class="btn" href="/api/export.csv">导出 CSV</a>
+  <label class="export-scope" title="导出当前选中的文档；左侧选“全部文档”时导出全部">导出范围
+    <select id="x-scope">
+      <option value="approved">已确认（三层都确认）</option>
+      <option value="all">全部（含未审核，不含已拒绝）</option>
+    </select>
+  </label>
+  <button id="btn-xlsx">导出 Excel</button>
+  <button id="btn-csv">导出 CSV</button>
 </header>
 
 <main>
@@ -40,6 +47,7 @@
         <option value="false">无 flag</option>
       </select>
     </div>
+    <div id="doc-panel" hidden></div>
     <div id="counts" class="muted"></div>
     <ul id="list"></ul>
   </aside>
@@ -54,6 +62,20 @@
     <div id="detail-body" class="muted">未选择</div>
   </section>
 </main>
+
+<dialog id="import-dlg">
+  <form id="import-form" method="dialog">
+    <h3>导入论文</h3>
+    <p class="muted">上传后只在本机把 PDF 转成文字，不调用 API。检查原文没问题后，再在左侧点“开始提取”。</p>
+    <label>文件（PDF 或 TXT）<input type="file" id="i-file" accept=".pdf,.txt" required></label>
+    <label>标题（如 2017_NG，默认用文件名）<input id="i-title" placeholder="YYYY_SURNAME"></label>
+    <div class="row">
+      <button type="submit" class="primary" id="i-go">上传并转换</button>
+      <button type="button" id="i-close">关闭</button>
+    </div>
+    <div id="i-result" class="muted"></div>
+  </form>
+</dialog>
 
 <div id="toast" hidden></div>
 <script src="highlight.js"></script>

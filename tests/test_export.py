@@ -28,7 +28,7 @@ def test_export_columns_follow_extraction_template():
     assert len(expected) == 160
     assert cols[:len(expected)] == expected
     rest = cols[len(expected):]
-    assert all(c.endswith("_quote") for c in rest[:-9]) and "value_numeric_quote" in rest
+    assert all(c.endswith("_quote") for c in rest[:-11]) and "value_numeric_quote" in rest   # 11 extra columns (2 review statuses added)
 
 
 def _approve(conn, *ids):

@@ -1,4 +1,5 @@
 fastapi>=0.110
+python-multipart>=0.0.9   # file upload on the review page
 uvicorn[standard]>=0.29
 openai>=1.30
 python-dotenv>=1.0

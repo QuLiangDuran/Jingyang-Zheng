@@ -7,6 +7,7 @@ refresh_document resolves them into records.parent_id and recomputes every flag
 of the document. System IDs (study_id, condition_id, ...) are derived on read.
 """
 import json
+from pathlib import Path
 import re
 import sqlite3
 
@@ -393,16 +394,25 @@ def refresh_document(conn: sqlite3.Connection, document_id: int) -> None:
 
 def list_documents(conn: sqlite3.Connection) -> list[dict]:
     rows = conn.execute(
-        """SELECT d.id, d.title, d.created_at,
+        """SELECT d.id, d.title, d.created_at, d.source_path, LENGTH(d.text) AS chars,
                   COUNT(r.id) AS total,
                   SUM(r.status='pending') AS pending,
                   SUM(r.status='approved') AS approved,
                   SUM(r.status='rejected') AS rejected,
-                  SUM(r.status='needs_resolution') AS needs_resolution
+                  SUM(r.status='needs_resolution') AS needs_resolution,
+                  (SELECT COUNT(*) FROM extraction_runs x WHERE x.document_id = d.id) AS runs,
+                  (SELECT x.status FROM extraction_runs x WHERE x.document_id = d.id
+                   ORDER BY x.id DESC LIMIT 1) AS last_run_status
            FROM documents d LEFT JOIN records r ON r.document_id = d.id
            GROUP BY d.id ORDER BY d.id""").fetchall()
-    counts = ("total", "pending", "approved", "rejected", "needs_resolution")
-    return [{k: (r[k] or 0) if k in counts else r[k] for k in r.keys()} for r in rows]
+    counts = ("total", "pending", "approved", "rejected", "needs_resolution", "runs")
+    out = []
+    for r in rows:
+        d = {k: (r[k] or 0) if k in counts else r[k] for k in r.keys() if k != "source_path"}
+        sp = r["source_path"] or ""
+        d["has_pdf"] = sp.lower().endswith(".pdf") and Path(sp).is_file()  # the model can see its pages
+        out.append(d)
+    return out
 
 
 def get_document(conn: sqlite3.Connection, document_id: int) -> dict:
